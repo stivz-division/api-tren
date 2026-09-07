@@ -23,7 +23,6 @@ class UserFactory extends Factory
             'first_name' => fake()->firstName(),
             'last_name' => fake()->lastName(),
             'language_code' => fake()->languageCode(),
-            'is_premium' => fake()->boolean(),
             'last_authenticated_at' => now(),
         ];
     }

@@ -18,7 +18,6 @@ return new class extends Migration
             $table->string('first_name');
             $table->string('last_name')->nullable();
             $table->string('language_code', 16)->nullable();
-            $table->boolean('is_premium')->default(false);
             $table->timestamp('last_authenticated_at')->nullable();
             $table->timestamps();
         });

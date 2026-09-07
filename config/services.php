@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'telegram' => [
+        'bot_token' => env('TELEGRAM_BOT_TOKEN', ''),
+        'auth_date_ttl' => env('TELEGRAM_AUTH_DATE_TTL', 300),
+        'auth_date_future_leeway' => env('TELEGRAM_AUTH_DATE_FUTURE_LEEWAY', 30),
+    ],
+
 ];
