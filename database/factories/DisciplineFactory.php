@@ -13,13 +13,13 @@ class DisciplineFactory extends Factory
     /**
      * Define the model's default state.
      *
-     * @return array<string, mixed>
+     * @return array{code: string, name: string}
      */
     public function definition(): array
     {
         return [
             'code' => fake()->unique()->slug(2),
-            'name' => fake()->words(2, true),
+            'name' => fake()->word().' '.fake()->word(),
         ];
     }
 }

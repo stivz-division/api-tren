@@ -2,6 +2,7 @@
 
 use App\Services\TelegramWebAppService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 
 const TELEGRAM_SERVICE_TEST_BOT_TOKEN = 'test-token';
@@ -10,11 +11,17 @@ const TELEGRAM_SERVICE_TEST_NOW = 1_700_000_000;
 $signTelegramServiceData = static function (array $fields, string $botToken = TELEGRAM_SERVICE_TEST_BOT_TOKEN): string {
     ksort($fields, SORT_STRING);
 
-    $dataCheckString = implode("\n", array_map(
-        static fn (string $key, string $value): string => $key.'='.$value,
-        array_keys($fields),
-        array_values($fields),
-    ));
+    $dataCheckParts = [];
+
+    foreach ($fields as $key => $value) {
+        if (! is_string($key) || ! is_string($value)) {
+            throw new UnexpectedValueException('Telegram fields must contain string keys and values.');
+        }
+
+        $dataCheckParts[] = $key.'='.$value;
+    }
+
+    $dataCheckString = implode("\n", $dataCheckParts);
     $secretKey = hash_hmac('sha256', $botToken, 'WebAppData', true);
     $hash = hash_hmac('sha256', $dataCheckString, $secretKey);
 
@@ -47,7 +54,7 @@ beforeEach(function (): void {
 
 it('validates the fixed Telegram vector and returns only persisted profile fields', function () {
     $this->travelTo(Carbon::createFromTimestamp(1_698_814_911 + 100));
-    $initData = trim(file_get_contents(base_path('tests/Fixtures/Telegram/valid-init-data.txt')));
+    $initData = trim(File::get(base_path('tests/Fixtures/Telegram/valid-init-data.txt')));
 
     $result = app(TelegramWebAppService::class)->validate($initData);
 
@@ -147,7 +154,10 @@ it('enforces auth date boundaries', function (int $authDate, bool $isValid) use 
 
 it('ignores signed unexpected and premium fields', function () use ($signTelegramServiceData, $validTelegramServiceFields) {
     $fields = $validTelegramServiceFields();
-    $user = json_decode($fields['user'], true, flags: JSON_THROW_ON_ERROR);
+    $user = expect(json_decode($fields['user'], true, flags: JSON_THROW_ON_ERROR))
+        ->toBeArray()
+        ->value;
+
     $user['is_premium'] = true;
     $user['allows_write_to_pm'] = true;
     $user['unexpected'] = 'ignored';

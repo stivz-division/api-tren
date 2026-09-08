@@ -19,6 +19,8 @@ class Discipline extends Model
 
     /**
      * Get the exercises for the discipline.
+     *
+     * @return HasMany<Exercise, $this>
      */
     public function exercises(): HasMany
     {

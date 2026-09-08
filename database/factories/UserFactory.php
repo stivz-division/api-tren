@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Carbon;
 
 /**
  * @extends Factory<User>
@@ -13,7 +14,14 @@ class UserFactory extends Factory
     /**
      * Define the model's default state.
      *
-     * @return array<string, mixed>
+     * @return array{
+     *     telegram_id: int,
+     *     username: string,
+     *     first_name: string,
+     *     last_name: string,
+     *     language_code: string,
+     *     last_authenticated_at: Carbon,
+     * }
      */
     public function definition(): array
     {

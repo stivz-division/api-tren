@@ -162,9 +162,8 @@ final readonly class TelegramWebAppService
             return null;
         }
 
-        $user = get_object_vars($decodedUser);
-        $telegramId = $user['id'] ?? null;
-        $firstName = $user['first_name'] ?? null;
+        $telegramId = $decodedUser->id ?? null;
+        $firstName = $decodedUser->first_name ?? null;
 
         if (! is_int($telegramId) || $telegramId <= 0 || $telegramId > self::MAX_TELEGRAM_ID) {
             return null;
@@ -174,30 +173,35 @@ final readonly class TelegramWebAppService
             return null;
         }
 
-        if (! $this->hasValidOptionalString($user, 'username', 255)
-            || ! $this->hasValidOptionalString($user, 'last_name', 255)
-            || ! $this->hasValidOptionalString($user, 'language_code', 16)) {
+        $username = $this->parseOptionalString($decodedUser, 'username', 255);
+        $lastName = $this->parseOptionalString($decodedUser, 'last_name', 255);
+        $languageCode = $this->parseOptionalString($decodedUser, 'language_code', 16);
+
+        if ($username === false || $lastName === false || $languageCode === false) {
             return null;
         }
 
         return [
             'telegram_id' => $telegramId,
-            'username' => $user['username'] ?? null,
+            'username' => $username,
             'first_name' => $firstName,
-            'last_name' => $user['last_name'] ?? null,
-            'language_code' => $user['language_code'] ?? null,
+            'last_name' => $lastName,
+            'language_code' => $languageCode,
         ];
     }
 
-    /**
-     * @param  array<string, mixed>  $user
-     */
-    private function hasValidOptionalString(array $user, string $field, int $maxLength): bool
+    private function parseOptionalString(stdClass $user, string $field, int $maxLength): string|false|null
     {
-        if (! array_key_exists($field, $user)) {
-            return true;
+        if (! property_exists($user, $field)) {
+            return null;
         }
 
-        return is_string($user[$field]) && Str::length($user[$field]) <= $maxLength;
+        $value = $user->{$field};
+
+        if (! is_string($value) || Str::length($value) > $maxLength) {
+            return false;
+        }
+
+        return $value;
     }
 }

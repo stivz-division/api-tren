@@ -1,0 +1,20 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - vendor/nesbot/carbon/extension.neon
+    - vendor/pestphp/pest-plugin-phpstan/extension.neon
+
+parameters:
+    level: max
+    phpVersion: 80400
+
+    paths:
+        - app
+        - bootstrap
+        - config
+        - database
+        - routes
+        - tests
+
+    checkModelProperties: true
+    checkConfigTypes: true
+    parseModelCastsMethod: true

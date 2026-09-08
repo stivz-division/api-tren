@@ -14,14 +14,14 @@ class ExerciseFactory extends Factory
     /**
      * Define the model's default state.
      *
-     * @return array<string, mixed>
+     * @return array{discipline_id: DisciplineFactory, code: string, name: string}
      */
     public function definition(): array
     {
         return [
             'discipline_id' => Discipline::factory(),
             'code' => fake()->unique()->slug(3),
-            'name' => fake()->words(3, true),
+            'name' => fake()->word().' '.fake()->word().' '.fake()->word(),
         ];
     }
 }

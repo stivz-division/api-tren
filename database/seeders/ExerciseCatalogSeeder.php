@@ -61,11 +61,7 @@ class ExerciseCatalogSeeder extends Seeder
             JSON_THROW_ON_ERROR,
         );
 
-        if (! is_array($catalog)) {
-            throw new UnexpectedValueException('The exercise catalog must contain a JSON object.');
-        }
-
-        return Validator::make($catalog, [
+        $validated = Validator::make($catalog, [
             'schema_version' => ['required', 'integer', 'in:1'],
             'discipline' => ['required', 'array:code,name'],
             'discipline.code' => ['required', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/'],
@@ -75,5 +71,52 @@ class ExerciseCatalogSeeder extends Seeder
             'exercises.*.code' => ['required', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', 'distinct:strict'],
             'exercises.*.name' => ['required', 'string', 'max:255'],
         ])->validate();
+
+        $schemaVersion = $validated['schema_version'] ?? null;
+        $discipline = $validated['discipline'] ?? null;
+        $exercises = $validated['exercises'] ?? null;
+
+        if (! is_int($schemaVersion)
+            || ! is_array($discipline)
+            || ! is_array($exercises)
+            || ! array_is_list($exercises)) {
+            throw new UnexpectedValueException('The validated exercise catalog contains unexpected types.');
+        }
+
+        $disciplineCode = $discipline['code'] ?? null;
+        $disciplineName = $discipline['name'] ?? null;
+
+        if (! is_string($disciplineCode) || ! is_string($disciplineName)) {
+            throw new UnexpectedValueException('The validated exercise discipline contains unexpected types.');
+        }
+
+        $normalizedExercises = [];
+
+        foreach ($exercises as $exercise) {
+            if (! is_array($exercise)) {
+                throw new UnexpectedValueException('The validated exercise entry contains an unexpected type.');
+            }
+
+            $code = $exercise['code'] ?? null;
+            $name = $exercise['name'] ?? null;
+
+            if (! is_string($code) || ! is_string($name)) {
+                throw new UnexpectedValueException('The validated exercise entry contains unexpected field types.');
+            }
+
+            $normalizedExercises[] = [
+                'code' => $code,
+                'name' => $name,
+            ];
+        }
+
+        return [
+            'schema_version' => $schemaVersion,
+            'discipline' => [
+                'code' => $disciplineCode,
+                'name' => $disciplineName,
+            ],
+            'exercises' => $normalizedExercises,
+        ];
     }
 }

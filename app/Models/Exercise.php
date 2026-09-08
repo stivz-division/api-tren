@@ -20,6 +20,8 @@ class Exercise extends Model
 
     /**
      * Get the discipline that owns the exercise.
+     *
+     * @return BelongsTo<Discipline, $this>
      */
     public function discipline(): BelongsTo
     {

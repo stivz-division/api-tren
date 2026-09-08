@@ -57,17 +57,18 @@ it('returns a Bearer token and creates the Telegram user', function () use ($tel
     ]);
 
     $response = $this->postJson(route('api.auth'), ['init_data' => $initData]);
+    $plainTextToken = expect($response->json('token'))->toBeString()->value;
 
     $response
         ->assertOk()
         ->assertHeader('Cache-Control')
         ->assertExactJson([
-            'token' => $response->json('token'),
+            'token' => $plainTextToken,
             'token_type' => 'Bearer',
         ]);
 
-    expect($response->json('token'))->toBeString()->not->toBeEmpty()
-        ->and($response->headers->hasCacheControlDirective('no-store'))->toBeTrue();
+    expect($plainTextToken)->not->toBeEmpty();
+    expect($response->headers->hasCacheControlDirective('no-store'))->toBeTrue();
     $this->assertDatabaseHas('users', [
         'telegram_id' => 987654321,
         'username' => 'telegram_user',
@@ -79,10 +80,11 @@ it('returns a Bearer token and creates the Telegram user', function () use ($tel
     $this->assertDatabaseCount('personal_access_tokens', 1);
 
     $user = User::query()->sole();
-    $token = PersonalAccessToken::findToken($response->json('token'));
+    $token = PersonalAccessToken::findToken($plainTextToken);
+    $tokenable = expect($token?->tokenable)->toBeInstanceOf(User::class)->value;
 
     expect($user->last_authenticated_at?->getTimestamp())->toBe(TELEGRAM_ENDPOINT_TEST_NOW)
-        ->and($token?->tokenable->is($user))->toBeTrue()
+        ->and($tokenable->is($user))->toBeTrue()
         ->and(Schema::hasColumn('users', 'is_premium'))->toBeFalse();
 });
 
@@ -114,7 +116,9 @@ it('updates an existing Telegram profile without creating a duplicate user', fun
         'last_name' => 'Profile',
         'language_code' => 'de',
     ]);
-    expect($user->fresh()->last_authenticated_at?->getTimestamp())->toBe(TELEGRAM_ENDPOINT_TEST_NOW);
+    $user->refresh();
+
+    expect($user->last_authenticated_at?->getTimestamp())->toBe(TELEGRAM_ENDPOINT_TEST_NOW);
 });
 
 it('returns generic 401 without persisting data for invalid credentials', function (array $payload) {
@@ -140,13 +144,18 @@ it('revokes the previous token when the user authenticates again', function () u
 
     $firstResponse->assertOk();
     $secondResponse->assertOk();
-    $firstToken = $firstResponse->json('token');
-    $secondToken = $secondResponse->json('token');
+    $firstToken = expect($firstResponse->json('token'))->toBeString()->value;
+    $secondToken = expect($secondResponse->json('token'))->toBeString()->value;
     $user = User::query()->sole();
 
-    expect($secondToken)->not->toBe($firstToken)
-        ->and(PersonalAccessToken::findToken($firstToken))->toBeNull()
-        ->and(PersonalAccessToken::findToken($secondToken)?->tokenable->is($user))->toBeTrue();
+    expect($secondToken)->not->toBe($firstToken);
+    expect(PersonalAccessToken::findToken($firstToken))->toBeNull();
+
+    $activeTokenable = expect(PersonalAccessToken::findToken($secondToken)?->tokenable)
+        ->toBeInstanceOf(User::class)
+        ->value;
+
+    expect($activeTokenable->is($user))->toBeTrue();
     $this->assertDatabaseCount('users', 1);
     $this->assertDatabaseCount('personal_access_tokens', 1);
 });
