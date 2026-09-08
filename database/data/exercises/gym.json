@@ -1,0 +1,81 @@
+{
+    "schema_version": 1,
+    "discipline": {
+        "code": "gym",
+        "name": "Тренажёрный зал"
+    },
+    "exercises": [
+        {
+            "code": "barbell-bench-press",
+            "name": "Жим лежа"
+        },
+        {
+            "code": "machine-shoulder-press",
+            "name": "Жим в тренажере на плечи"
+        },
+        {
+            "code": "pec-deck",
+            "name": "Бабочка"
+        },
+        {
+            "code": "dumbbell-lateral-raise",
+            "name": "Махи гантелей в стороны"
+        },
+        {
+            "code": "rope-triceps-pushdown",
+            "name": "Разгибание на трицепс с косичкой"
+        },
+        {
+            "code": "v-bar-triceps-pushdown",
+            "name": "Разгибание на трицепс с V рукояткой"
+        },
+        {
+            "code": "incline-dumbbell-press",
+            "name": "Жим гантелей под углом"
+        },
+        {
+            "code": "wide-grip-lat-pulldown",
+            "name": "Вертикальная тяга широким хватом к груди"
+        },
+        {
+            "code": "chest-supported-row",
+            "name": "Тяга с упором грудью"
+        },
+        {
+            "code": "medium-reverse-grip-lat-pulldown",
+            "name": "Вертикальная тяга обратным средним хватом"
+        },
+        {
+            "code": "rope-face-pull",
+            "name": "Лицевая тяга с канатом"
+        },
+        {
+            "code": "high-cable-rope-pullover",
+            "name": "Пуловер с канатом с верхнего кроссовера"
+        },
+        {
+            "code": "ez-bar-curl",
+            "name": "Сгибания на бицепс с EZ"
+        },
+        {
+            "code": "machine-preacher-curl",
+            "name": "Сгибания на бицепс в тренажере скотта"
+        },
+        {
+            "code": "hack-squat",
+            "name": "Гакк приседания"
+        },
+        {
+            "code": "barbell-romanian-deadlift",
+            "name": "Румынская тяга со штангой"
+        },
+        {
+            "code": "leg-press",
+            "name": "Жим ногами"
+        },
+        {
+            "code": "seated-leg-curl",
+            "name": "Сгибания ног сидя"
+        }
+    ]
+}
