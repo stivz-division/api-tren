@@ -152,6 +152,27 @@ it('enforces auth date boundaries', function (int $authDate, bool $isValid) use 
     'one second beyond future leeway' => [TELEGRAM_SERVICE_TEST_NOW + 31, false],
 ]);
 
+it('accepts signed auth dates outside freshness boundaries when the ttl is zero', function (int $authDate) use ($signTelegramServiceData, $validTelegramServiceFields) {
+    config()->set('services.telegram.auth_date_ttl', 0);
+    $initData = $signTelegramServiceData($validTelegramServiceFields($authDate));
+
+    $result = app(TelegramWebAppService::class)->validate($initData);
+
+    expect($result)->not->toBeNull();
+})->with([
+    'expired auth date' => [TELEGRAM_SERVICE_TEST_NOW - 301],
+    'auth date beyond future leeway' => [TELEGRAM_SERVICE_TEST_NOW + 31],
+]);
+
+it('still rejects invalid signatures when auth date freshness validation is disabled', function () use ($signTelegramServiceData, $validTelegramServiceFields) {
+    config()->set('services.telegram.auth_date_ttl', 0);
+    $initData = $signTelegramServiceData($validTelegramServiceFields());
+
+    $result = app(TelegramWebAppService::class)->validate(str_replace('Evgen', 'Mallory', $initData));
+
+    expect($result)->toBeNull();
+});
+
 it('ignores signed unexpected and premium fields', function () use ($signTelegramServiceData, $validTelegramServiceFields) {
     $fields = $validTelegramServiceFields();
     $user = expect(json_decode($fields['user'], true, flags: JSON_THROW_ON_ERROR))
@@ -171,6 +192,12 @@ it('ignores signed unexpected and premium fields', function () use ($signTelegra
 
 it('fails closed when the Telegram bot token is empty', function () use ($signTelegramServiceData, $validTelegramServiceFields) {
     config()->set('services.telegram.bot_token', '');
+
+    app(TelegramWebAppService::class)->validate($signTelegramServiceData($validTelegramServiceFields()));
+})->throws(LogicException::class, 'Telegram Web App authentication is not configured.');
+
+it('fails closed when the auth date ttl is negative', function () use ($signTelegramServiceData, $validTelegramServiceFields) {
+    config()->set('services.telegram.auth_date_ttl', -1);
 
     app(TelegramWebAppService::class)->validate($signTelegramServiceData($validTelegramServiceFields()));
 })->throws(LogicException::class, 'Telegram Web App authentication is not configured.');

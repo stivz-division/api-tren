@@ -40,7 +40,7 @@ final readonly class TelegramWebAppService
 
         $authDate = $this->parseAuthDate($fields['auth_date'] ?? null);
 
-        if ($authDate === null || ! $this->isFresh($authDate)) {
+        if ($authDate === null || ($this->authDateTtl > 0 && ! $this->isFresh($authDate))) {
             return null;
         }
 
@@ -49,7 +49,7 @@ final readonly class TelegramWebAppService
 
     private function ensureConfigured(): void
     {
-        if ($this->botToken === '' || $this->authDateTtl <= 0 || $this->authDateFutureLeeway < 0) {
+        if ($this->botToken === '' || $this->authDateTtl < 0 || $this->authDateFutureLeeway < 0) {
             throw new LogicException('Telegram Web App authentication is not configured.');
         }
     }
