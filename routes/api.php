@@ -10,3 +10,5 @@ Route::post('auth', AuthController::class)
         ValidateTelegramWebAppData::class,
     ])
     ->name('api.auth');
+
+require base_path('app/WorkoutPlanning/Presentation/Routes/api.php');

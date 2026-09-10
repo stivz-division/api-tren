@@ -1,58 +1,53 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Расписание тренировок
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Расписание помогает заранее определить, в какие дни вы тренируетесь и какие упражнения выполняете.
 
-## About Laravel
+## Как составить расписание
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Выберите день недели и создайте для него программу тренировки. Можно запланировать тренировки на любые дни с понедельника по воскресенье — например, на понедельник, среду и пятницу.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+Для каждого упражнения укажите:
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- количество подходов;
+- количество повторений в одном подходе;
+- рабочий вес в килограммах.
 
-## Learning Laravel
+Рабочий вес можно указать с точностью до двух знаков после запятой: например, `100`, `2.5` или `1.25` кг. Для упражнения без дополнительного веса можно указать `0` кг.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Пример программы
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+**Понедельник — «Тренировка груди»**
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+- Жим лёжа — 3 подхода по 6 повторений, рабочий вес 100 кг.
+- Разведение гантелей — 3 подхода по 10 повторений, рабочий вес 12.5 кг.
 
-## Agentic Development
+Когда наступит понедельник, вы сможете открыть программу на этот день и увидеть заранее запланированные упражнения и нагрузку.
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Название программы
 
-```bash
-composer require laravel/boost --dev
+Если название не указано, программа получит название «Тренировка». Название можно изменить в любое время.
 
-php artisan boost:install
-```
+## Правила расписания
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+- На один день недели можно создать только одну программу.
+- В программе должно быть хотя бы одно упражнение.
+- Одно и то же упражнение можно добавить в программу только один раз.
+- Порядок упражнений сохраняется таким, каким вы его указали.
 
-## Contributing
+## Изменение программы
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Можно изменить название программы, состав упражнений, их порядок, количество подходов, повторений и рабочий вес.
 
-## Code of Conduct
+Перенести существующую программу на другой день нельзя. Если такая же тренировка нужна в другой день, создайте для него новую программу.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Удаление программы
 
-## Security Vulnerabilities
+Программу можно удалить из расписания. Удаление окончательное: программа и все запланированные в ней упражнения исчезнут.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+После удаления для освободившегося дня можно создать новую программу.
 
-## License
+## Что пока не входит в расписание
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Расписание хранит только план тренировки. Оно не фиксирует фактическое выполнение подходов.
+
+Во время будущего выполнения тренировки можно будет отдельно записывать реальный вес и количество повторений для каждого подхода. Эти результаты не будут изменять заранее составленную программу.
