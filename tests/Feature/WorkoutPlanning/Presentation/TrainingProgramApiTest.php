@@ -11,6 +11,12 @@ use Tests\Support\WorkoutPlanning\SynchronousTrainingProgramMutationLock;
 
 uses(LazilyRefreshDatabase::class);
 
+$sets = static fn (int $count, int $repetitions, int|float $workingWeightInKilograms): array => array_fill(
+    0,
+    $count,
+    ['repetitions' => $repetitions, 'working_weight_kg' => $workingWeightInKilograms],
+);
+
 beforeEach(function (): void {
     $this->app->instance(
         TrainingProgramMutationLock::class,
@@ -30,7 +36,7 @@ it('returns 401 for every training program endpoint without a token', function (
     'get by weekday' => ['GET', '/api/training-programs/weekdays/1'],
 ]);
 
-it('creates a program and converts kilograms to grams', function (): void {
+it('creates a program with ordered individual planned sets', function (): void {
     $user = User::factory()->create();
     $benchPress = Exercise::factory()->create();
     Sanctum::actingAs($user);
@@ -39,9 +45,12 @@ it('creates a program and converts kilograms to grams', function (): void {
         'weekday' => 1,
         'exercises' => [[
             'exercise_id' => $benchPress->id,
-            'sets' => 3,
-            'repetitions_per_set' => 6,
-            'working_weight_kg' => 1.25,
+            'sets' => [
+                ['repetitions' => 3, 'working_weight_kg' => 80],
+                ['repetitions' => 6, 'working_weight_kg' => 100],
+                ['repetitions' => 3, 'working_weight_kg' => 120],
+                ['repetitions' => 1, 'working_weight_kg' => 130],
+            ],
         ]],
     ]);
 
@@ -50,9 +59,12 @@ it('creates a program and converts kilograms to grams', function (): void {
         ->assertJsonPath('data.weekday', 1)
         ->assertJsonPath('data.name', 'Тренировка')
         ->assertJsonPath('data.exercises.0.exercise_id', $benchPress->id)
-        ->assertJsonPath('data.exercises.0.sets', 3)
-        ->assertJsonPath('data.exercises.0.repetitions_per_set', 6)
-        ->assertJsonPath('data.exercises.0.working_weight_kg', 1.25)
+        ->assertJsonPath('data.exercises.0.sets', [
+            ['position' => 1, 'repetitions' => 3, 'working_weight_kg' => 80],
+            ['position' => 2, 'repetitions' => 6, 'working_weight_kg' => 100],
+            ['position' => 3, 'repetitions' => 3, 'working_weight_kg' => 120],
+            ['position' => 4, 'repetitions' => 1, 'working_weight_kg' => 130],
+        ])
         ->assertJsonPath('data.exercises.0.position', 1)
         ->assertJsonMissingPath('data.user_id');
 
@@ -63,14 +75,17 @@ it('creates a program and converts kilograms to grams', function (): void {
     ]);
     $this->assertDatabaseHas('planned_exercises', [
         'exercise_id' => $benchPress->id,
-        'sets' => 3,
-        'repetitions_per_set' => 6,
-        'working_weight_grams' => 1250,
         'position' => 1,
+    ]);
+    $this->assertDatabaseCount('planned_sets', 4);
+    $this->assertDatabaseHas('planned_sets', [
+        'position' => 4,
+        'repetitions' => 1,
+        'working_weight_grams' => 130_000,
     ]);
 });
 
-it('returns 422 when working weight has more than two decimal places', function (): void {
+it('returns 422 when a set working weight has more than two decimal places', function (): void {
     $user = User::factory()->create();
     $exercise = Exercise::factory()->create();
     Sanctum::actingAs($user);
@@ -79,15 +94,13 @@ it('returns 422 when working weight has more than two decimal places', function 
         'weekday' => 1,
         'exercises' => [[
             'exercise_id' => $exercise->id,
-            'sets' => 3,
-            'repetitions_per_set' => 6,
-            'working_weight_kg' => 1.255,
+            'sets' => [['repetitions' => 6, 'working_weight_kg' => 1.255]],
         ]],
     ]);
 
     $response
         ->assertUnprocessable()
-        ->assertJsonValidationErrors(['exercises.0.working_weight_kg']);
+        ->assertJsonValidationErrors(['exercises.0.sets.0.working_weight_kg']);
     $this->assertDatabaseCount('training_programs', 0);
 });
 
@@ -106,7 +119,43 @@ it('returns 422 when a program has no exercises', function (): void {
     $this->assertDatabaseCount('training_programs', 0);
 });
 
-it('returns 409 with a stable code when the weekday is already occupied', function (): void {
+it('validates an ordered non-empty bounded list of complete planned sets', function (
+    mixed $plannedSets,
+    array $expectedErrors,
+): void {
+    $user = User::factory()->create();
+    $exercise = Exercise::factory()->create();
+    Sanctum::actingAs($user);
+
+    $this->postJson('/api/training-programs', [
+        'weekday' => 1,
+        'exercises' => [[
+            'exercise_id' => $exercise->id,
+            'sets' => $plannedSets,
+        ]],
+    ])->assertUnprocessable()->assertJsonValidationErrors($expectedErrors);
+
+    $this->assertDatabaseCount('training_programs', 0);
+})->with([
+    'empty' => [[], ['exercises.0.sets']],
+    'associative' => [
+        ['first' => ['repetitions' => 6, 'working_weight_kg' => 100]],
+        ['exercises.0.sets'],
+    ],
+    'more than one hundred' => [
+        array_fill(0, 101, ['repetitions' => 6, 'working_weight_kg' => 100]),
+        ['exercises.0.sets'],
+    ],
+    'invalid values' => [
+        [['repetitions' => 0, 'working_weight_kg' => -1]],
+        [
+            'exercises.0.sets.0.repetitions',
+            'exercises.0.sets.0.working_weight_kg',
+        ],
+    ],
+]);
+
+it('returns 409 with a stable code when the weekday is already occupied', function () use ($sets): void {
     $user = User::factory()->create();
     $exercise = Exercise::factory()->create();
     Sanctum::actingAs($user);
@@ -114,9 +163,7 @@ it('returns 409 with a stable code when the weekday is already occupied', functi
         'weekday' => 1,
         'exercises' => [[
             'exercise_id' => $exercise->id,
-            'sets' => 3,
-            'repetitions_per_set' => 6,
-            'working_weight_kg' => 100,
+            'sets' => $sets(3, 6, 100),
         ]],
     ];
     $this->postJson('/api/training-programs', $payload)->assertCreated();
@@ -132,7 +179,7 @@ it('returns 409 with a stable code when the weekday is already occupied', functi
     $this->assertDatabaseCount('training_programs', 1);
 });
 
-it('returns the authenticated user program for a weekday', function (): void {
+it('returns the authenticated user program for a weekday', function () use ($sets): void {
     $owner = User::factory()->create();
     $otherUser = User::factory()->create();
     $exercise = Exercise::factory()->create();
@@ -142,9 +189,7 @@ it('returns the authenticated user program for a weekday', function (): void {
         'name' => 'Грудь и спина',
         'exercises' => [[
             'exercise_id' => $exercise->id,
-            'sets' => 4,
-            'repetitions_per_set' => 8,
-            'working_weight_kg' => 2.5,
+            'sets' => $sets(4, 8, 2.5),
         ]],
     ])->assertCreated()->json('data.id'))->toBeInt()->value;
 
@@ -155,7 +200,7 @@ it('returns the authenticated user program for a weekday', function (): void {
     $ownerResponse
         ->assertOk()
         ->assertJsonPath('data.id', $programId)
-        ->assertJsonPath('data.exercises.0.working_weight_kg', 2.5);
+        ->assertJsonPath('data.exercises.0.sets.0.working_weight_kg', 2.5);
     $otherUserResponse
         ->assertNotFound()
         ->assertExactJson([
@@ -164,7 +209,7 @@ it('returns the authenticated user program for a weekday', function (): void {
         ]);
 });
 
-it('fully replaces the name and exercises without changing the weekday', function (): void {
+it('fully replaces the name, exercises, and individual sets without changing the weekday', function () use ($sets): void {
     $user = User::factory()->create();
     $firstExercise = Exercise::factory()->create();
     $secondExercise = Exercise::factory()->create();
@@ -173,9 +218,7 @@ it('fully replaces the name and exercises without changing the weekday', functio
         'weekday' => 5,
         'exercises' => [[
             'exercise_id' => $firstExercise->id,
-            'sets' => 3,
-            'repetitions_per_set' => 6,
-            'working_weight_kg' => 100,
+            'sets' => $sets(3, 6, 100),
         ]],
     ])->assertCreated()->json('data.id'))->toBeInt()->value;
 
@@ -183,9 +226,12 @@ it('fully replaces the name and exercises without changing the weekday', functio
         'name' => 'Тяжёлая тренировка',
         'exercises' => [[
             'exercise_id' => $secondExercise->id,
-            'sets' => 5,
-            'repetitions_per_set' => 5,
-            'working_weight_kg' => 102.5,
+            'sets' => [
+                ['repetitions' => 3, 'working_weight_kg' => 80],
+                ['repetitions' => 6, 'working_weight_kg' => 100],
+                ['repetitions' => 3, 'working_weight_kg' => 120],
+                ['repetitions' => 1, 'working_weight_kg' => 130],
+            ],
         ]],
     ]);
 
@@ -194,7 +240,12 @@ it('fully replaces the name and exercises without changing the weekday', functio
         ->assertJsonPath('data.weekday', 5)
         ->assertJsonPath('data.name', 'Тяжёлая тренировка')
         ->assertJsonPath('data.exercises.0.exercise_id', $secondExercise->id)
-        ->assertJsonPath('data.exercises.0.working_weight_kg', 102.5);
+        ->assertJsonPath('data.exercises.0.sets', [
+            ['position' => 1, 'repetitions' => 3, 'working_weight_kg' => 80],
+            ['position' => 2, 'repetitions' => 6, 'working_weight_kg' => 100],
+            ['position' => 3, 'repetitions' => 3, 'working_weight_kg' => 120],
+            ['position' => 4, 'repetitions' => 1, 'working_weight_kg' => 130],
+        ]);
     $this->assertDatabaseMissing('planned_exercises', [
         'training_program_id' => $programId,
         'exercise_id' => $firstExercise->id,
@@ -202,11 +253,59 @@ it('fully replaces the name and exercises without changing the weekday', functio
     $this->assertDatabaseHas('planned_exercises', [
         'training_program_id' => $programId,
         'exercise_id' => $secondExercise->id,
-        'working_weight_grams' => 102500,
+    ]);
+    $this->assertDatabaseCount('planned_sets', 4);
+    $this->assertDatabaseHas('planned_sets', [
+        'position' => 4,
+        'repetitions' => 1,
+        'working_weight_grams' => 130_000,
     ]);
 });
 
-it('returns 422 when update attempts to move a program to another weekday', function (): void {
+it('adds and removes individual sets when updating the same exercise', function () use ($sets): void {
+    $user = User::factory()->create();
+    $exercise = Exercise::factory()->create();
+    Sanctum::actingAs($user);
+    $programId = expect($this->postJson('/api/training-programs', [
+        'weekday' => 6,
+        'exercises' => [[
+            'exercise_id' => $exercise->id,
+            'sets' => $sets(3, 6, 100),
+        ]],
+    ])->assertCreated()->json('data.id'))->toBeInt()->value;
+
+    $this->putJson('/api/training-programs/'.$programId, [
+        'name' => 'Пирамида',
+        'exercises' => [[
+            'exercise_id' => $exercise->id,
+            'sets' => [
+                ['repetitions' => 3, 'working_weight_kg' => 80],
+                ['repetitions' => 6, 'working_weight_kg' => 100],
+                ['repetitions' => 3, 'working_weight_kg' => 120],
+                ['repetitions' => 1, 'working_weight_kg' => 130],
+            ],
+        ]],
+    ])->assertOk()->assertJsonCount(4, 'data.exercises.0.sets');
+
+    $this->putJson('/api/training-programs/'.$programId, [
+        'name' => 'Короткая пирамида',
+        'exercises' => [[
+            'exercise_id' => $exercise->id,
+            'sets' => [
+                ['repetitions' => 5, 'working_weight_kg' => 90],
+                ['repetitions' => 2, 'working_weight_kg' => 120],
+            ],
+        ]],
+    ])->assertOk()->assertJsonPath('data.exercises.0.sets', [
+        ['position' => 1, 'repetitions' => 5, 'working_weight_kg' => 90],
+        ['position' => 2, 'repetitions' => 2, 'working_weight_kg' => 120],
+    ]);
+
+    $this->assertDatabaseCount('planned_exercises', 1);
+    $this->assertDatabaseCount('planned_sets', 2);
+});
+
+it('returns 422 when update attempts to move a program to another weekday', function () use ($sets): void {
     $user = User::factory()->create();
     $exercise = Exercise::factory()->create();
     Sanctum::actingAs($user);
@@ -214,9 +313,7 @@ it('returns 422 when update attempts to move a program to another weekday', func
         'weekday' => 1,
         'exercises' => [[
             'exercise_id' => $exercise->id,
-            'sets' => 3,
-            'repetitions_per_set' => 6,
-            'working_weight_kg' => 100,
+            'sets' => $sets(3, 6, 100),
         ]],
     ])->assertCreated()->json('data.id'))->toBeInt()->value;
 
@@ -225,9 +322,7 @@ it('returns 422 when update attempts to move a program to another weekday', func
         'name' => 'Тренировка',
         'exercises' => [[
             'exercise_id' => $exercise->id,
-            'sets' => 3,
-            'repetitions_per_set' => 6,
-            'working_weight_kg' => 100,
+            'sets' => $sets(3, 6, 100),
         ]],
     ]);
 
@@ -240,7 +335,7 @@ it('returns 422 when update attempts to move a program to another weekday', func
     ]);
 });
 
-it('returns 404 when updating another user program', function (): void {
+it('returns 404 when updating another user program', function () use ($sets): void {
     $owner = User::factory()->create();
     $otherUser = User::factory()->create();
     $exercise = Exercise::factory()->create();
@@ -249,9 +344,7 @@ it('returns 404 when updating another user program', function (): void {
         'weekday' => 1,
         'exercises' => [[
             'exercise_id' => $exercise->id,
-            'sets' => 3,
-            'repetitions_per_set' => 6,
-            'working_weight_kg' => 100,
+            'sets' => $sets(3, 6, 100),
         ]],
     ])->assertCreated()->json('data.id'))->toBeInt()->value;
     Sanctum::actingAs($otherUser);
@@ -260,9 +353,7 @@ it('returns 404 when updating another user program', function (): void {
         'name' => 'Чужая программа',
         'exercises' => [[
             'exercise_id' => $exercise->id,
-            'sets' => 1,
-            'repetitions_per_set' => 1,
-            'working_weight_kg' => 0,
+            'sets' => $sets(1, 1, 0),
         ]],
     ]);
 
@@ -275,7 +366,7 @@ it('returns 404 when updating another user program', function (): void {
     ]);
 });
 
-it('hard deletes only the authenticated user program', function (): void {
+it('hard deletes only the authenticated user program', function () use ($sets): void {
     $user = User::factory()->create();
     $exercise = Exercise::factory()->create();
     Sanctum::actingAs($user);
@@ -283,9 +374,7 @@ it('hard deletes only the authenticated user program', function (): void {
         'weekday' => 7,
         'exercises' => [[
             'exercise_id' => $exercise->id,
-            'sets' => 3,
-            'repetitions_per_set' => 6,
-            'working_weight_kg' => 0,
+            'sets' => $sets(3, 6, 0),
         ]],
     ])->assertCreated()->json('data.id'))->toBeInt()->value;
 
@@ -296,9 +385,10 @@ it('hard deletes only the authenticated user program', function (): void {
     $this->assertDatabaseMissing('planned_exercises', [
         'training_program_id' => $programId,
     ]);
+    $this->assertDatabaseCount('planned_sets', 0);
 });
 
-it('returns 409 with a stable code while schedule mutation is locked', function (): void {
+it('returns 409 with a stable code while schedule mutation is locked', function () use ($sets): void {
     $user = User::factory()->create();
     $exercise = Exercise::factory()->create();
     Sanctum::actingAs($user);
@@ -317,9 +407,7 @@ it('returns 409 with a stable code while schedule mutation is locked', function 
         'weekday' => 1,
         'exercises' => [[
             'exercise_id' => $exercise->id,
-            'sets' => 3,
-            'repetitions_per_set' => 6,
-            'working_weight_kg' => 100,
+            'sets' => $sets(3, 6, 100),
         ]],
     ]);
 

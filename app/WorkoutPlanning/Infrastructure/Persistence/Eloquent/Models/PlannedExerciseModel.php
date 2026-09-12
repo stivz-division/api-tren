@@ -4,24 +4,21 @@ namespace App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Models;
 
 use App\Models\Exercise;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property int $id
  * @property int $training_program_id
  * @property int $exercise_id
- * @property int $sets
- * @property int $repetitions_per_set
- * @property int $working_weight_grams
  * @property int $position
  * @property-read Exercise $exercise
+ * @property-read Collection<int, PlannedSetModel> $plannedSets
  */
 #[Fillable([
     'exercise_id',
-    'sets',
-    'repetitions_per_set',
-    'working_weight_grams',
     'position',
 ])]
 final class PlannedExerciseModel extends Model
@@ -40,6 +37,14 @@ final class PlannedExerciseModel extends Model
         return $this->belongsTo(Exercise::class);
     }
 
+    /** @return HasMany<PlannedSetModel, $this> */
+    public function plannedSets(): HasMany
+    {
+        return $this->hasMany(PlannedSetModel::class, 'planned_exercise_id')
+            ->orderBy('position')
+            ->orderBy('id');
+    }
+
     /** @return array<string, string> */
     protected function casts(): array
     {
@@ -47,9 +52,6 @@ final class PlannedExerciseModel extends Model
             'id' => 'integer',
             'training_program_id' => 'integer',
             'exercise_id' => 'integer',
-            'sets' => 'integer',
-            'repetitions_per_set' => 'integer',
-            'working_weight_grams' => 'integer',
             'position' => 'integer',
         ];
     }

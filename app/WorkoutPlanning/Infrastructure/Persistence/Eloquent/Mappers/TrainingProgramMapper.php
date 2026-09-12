@@ -3,18 +3,21 @@
 namespace App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Mappers;
 
 use App\WorkoutPlanning\Domain\Collections\PlannedExerciseCollection;
+use App\WorkoutPlanning\Domain\Collections\PlannedSetCollection;
 use App\WorkoutPlanning\Domain\Entities\PlannedExercise;
 use App\WorkoutPlanning\Domain\Entities\TrainingProgram;
 use App\WorkoutPlanning\Domain\Enums\Weekday;
 use App\WorkoutPlanning\Domain\ValueObjects\ExerciseId;
 use App\WorkoutPlanning\Domain\ValueObjects\ExercisePosition;
+use App\WorkoutPlanning\Domain\ValueObjects\PlannedSet;
 use App\WorkoutPlanning\Domain\ValueObjects\ProgramName;
-use App\WorkoutPlanning\Domain\ValueObjects\RepetitionsPerSet;
-use App\WorkoutPlanning\Domain\ValueObjects\SetsCount;
+use App\WorkoutPlanning\Domain\ValueObjects\Repetitions;
+use App\WorkoutPlanning\Domain\ValueObjects\SetPosition;
 use App\WorkoutPlanning\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutPlanning\Domain\ValueObjects\UserId;
 use App\WorkoutPlanning\Domain\ValueObjects\WorkingWeight;
 use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Models\PlannedExerciseModel;
+use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Models\PlannedSetModel;
 use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Models\TrainingProgramModel;
 use LogicException;
 
@@ -30,13 +33,35 @@ final readonly class TrainingProgramMapper
 
         /** @var list<PlannedExercise> $plannedExercises */
         $plannedExercises = $model->plannedExercises
-            ->map(static fn (PlannedExerciseModel $exercise): PlannedExercise => new PlannedExercise(
-                new ExerciseId($exercise->exercise_id),
-                new SetsCount($exercise->sets),
-                new RepetitionsPerSet($exercise->repetitions_per_set),
-                new WorkingWeight($exercise->working_weight_grams),
-                new ExercisePosition($exercise->position),
-            ))
+            ->map(function (PlannedExerciseModel $exercise): PlannedExercise {
+                if (! $exercise->relationLoaded('plannedSets')) {
+                    throw new LogicException(
+                        'Для восстановления упражнения необходимо загрузить запланированные подходы.',
+                    );
+                }
+
+                /** @var list<PlannedSet> $sets */
+                $sets = $exercise->plannedSets
+                    ->map(static fn (PlannedSetModel $set): PlannedSet => new PlannedSet(
+                        new SetPosition($set->position),
+                        new Repetitions($set->repetitions),
+                        new WorkingWeight($set->working_weight_grams),
+                    ))
+                    ->values()
+                    ->all();
+
+                if ($sets === []) {
+                    throw new LogicException(
+                        'Сохранённое упражнение должно содержать хотя бы один запланированный подход.',
+                    );
+                }
+
+                return new PlannedExercise(
+                    new ExerciseId($exercise->exercise_id),
+                    new PlannedSetCollection($sets[0], ...array_slice($sets, 1)),
+                    new ExercisePosition($exercise->position),
+                );
+            })
             ->values()
             ->all();
 

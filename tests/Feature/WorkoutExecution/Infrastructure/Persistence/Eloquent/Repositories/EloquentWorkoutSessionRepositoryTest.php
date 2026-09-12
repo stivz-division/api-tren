@@ -11,11 +11,9 @@ use App\WorkoutExecution\Domain\ValueObjects\ExerciseId;
 use App\WorkoutExecution\Domain\ValueObjects\ExerciseName;
 use App\WorkoutExecution\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutExecution\Domain\ValueObjects\ExerciseSnapshot;
-use App\WorkoutExecution\Domain\ValueObjects\PlannedPrescription;
 use App\WorkoutExecution\Domain\ValueObjects\ProgramName;
 use App\WorkoutExecution\Domain\ValueObjects\Repetitions;
 use App\WorkoutExecution\Domain\ValueObjects\SetPosition;
-use App\WorkoutExecution\Domain\ValueObjects\SetsCount;
 use App\WorkoutExecution\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutExecution\Domain\ValueObjects\TrainingProgramSnapshot;
 use App\WorkoutExecution\Domain\ValueObjects\UserId;
@@ -25,6 +23,7 @@ use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Mappers\WorkoutSess
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Repositories\EloquentWorkoutSessionRepository;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Tests\Support\WorkoutExecution\WorkoutSessionFixture;
 
 uses(LazilyRefreshDatabase::class);
 
@@ -46,11 +45,7 @@ $workoutExercise = static fn (
         new ExerciseName($name),
         new ExercisePosition($position),
     ),
-    new PlannedPrescription(
-        new SetsCount($sets),
-        new Repetitions($repetitions),
-        new WorkingWeight($weightInGrams),
-    ),
+    WorkoutSessionFixture::sets($sets, $repetitions, $weightInGrams),
 );
 
 $newSession = static fn (int $userId, int $trainingProgramId = 71): WorkoutSession => WorkoutSession::start(
@@ -93,11 +88,14 @@ it('persists and rehydrates the complete workout aggregate', function () use ($r
         'workout_session_id' => $id->value,
         'exercise_id' => 501,
         'exercise_name' => 'Жим лежа',
-        'planned_sets' => 3,
-        'planned_repetitions_per_set' => 8,
-        'planned_working_weight_grams' => 90_000,
         'position' => 1,
         'status' => 'pending',
+    ]);
+    $this->assertDatabaseCount('workout_planned_sets', 6);
+    $this->assertDatabaseHas('workout_planned_sets', [
+        'position' => 3,
+        'repetitions' => 8,
+        'working_weight_grams' => 90_000,
     ]);
     $this->assertDatabaseCount('workout_sets', 6);
 
@@ -140,12 +138,14 @@ it('replaces actual sets while preserving immutable plan snapshots', function ()
     $exercises = $rehydrated?->workoutExercises() ?? [];
 
     expect($exercises[0]->snapshot->name->value)->toBe('Жим лежа');
-    expect($exercises[0]->plannedPrescription->workingWeight->grams)->toBe(90_000);
+    expect($exercises[0]->plannedSets())->toHaveCount(3);
+    expect($exercises[0]->plannedSets()[2]->workingWeight->grams)->toBe(90_000);
     expect($exercises[0]->workoutSets())->toHaveCount(4);
     expect($exercises[0]->workoutSets()[1]->workingWeight->grams)->toBe(100_000);
     expect($exercises[1]->status->value)->toBe('completed');
     expect($exercises[1]->workoutSets())->toHaveCount(1);
     $this->assertDatabaseCount('workout_sets', 5);
+    $this->assertDatabaseCount('workout_planned_sets', 6);
 });
 
 it('allows a new active session after the previous session is completed', function () use ($repository, $newSession): void {

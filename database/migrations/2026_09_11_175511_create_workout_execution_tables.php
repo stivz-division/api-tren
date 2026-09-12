@@ -33,13 +33,22 @@ return new class extends Migration
             $table->unsignedBigInteger('exercise_id');
             $table->text('exercise_name');
             $table->unsignedInteger('position');
-            $table->unsignedInteger('planned_sets');
-            $table->unsignedInteger('planned_repetitions_per_set');
-            $table->unsignedBigInteger('planned_working_weight_grams');
             $table->enum('status', ['pending', 'completed', 'skipped']);
 
             $table->unique(['workout_session_id', 'exercise_id']);
             $table->unique(['workout_session_id', 'position']);
+        });
+
+        Schema::create('workout_planned_sets', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('workout_exercise_id')
+                ->constrained('workout_exercises')
+                ->cascadeOnDelete();
+            $table->unsignedInteger('position');
+            $table->unsignedInteger('repetitions');
+            $table->unsignedBigInteger('working_weight_grams');
+
+            $table->unique(['workout_exercise_id', 'position']);
         });
 
         Schema::create('workout_sets', function (Blueprint $table) {
@@ -80,12 +89,12 @@ return new class extends Migration
             DB::statement(<<<'SQL'
                 ALTER TABLE workout_exercises
                 ADD CONSTRAINT workout_exercises_values_check
-                CHECK (
-                    position > 0
-                    AND planned_sets > 0
-                    AND planned_repetitions_per_set > 0
-                    AND planned_working_weight_grams >= 0
-                )
+                CHECK (position > 0)
+                SQL);
+            DB::statement(<<<'SQL'
+                ALTER TABLE workout_planned_sets
+                ADD CONSTRAINT workout_planned_sets_values_check
+                CHECK (position > 0 AND repetitions > 0 AND working_weight_grams >= 0)
                 SQL);
             DB::statement(<<<'SQL'
                 ALTER TABLE workout_sets
@@ -101,6 +110,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('workout_sets');
+        Schema::dropIfExists('workout_planned_sets');
         Schema::dropIfExists('workout_exercises');
         Schema::dropIfExists('workout_sessions');
     }

@@ -4,10 +4,9 @@ namespace App\WorkoutPlanning\Application\DTO;
 
 final readonly class PlannedExerciseInput
 {
+    /** @param list<PlannedSetInput> $sets */
     public function __construct(
         public private(set) int $exerciseId,
-        public private(set) int $sets,
-        public private(set) int $repetitionsPerSet,
-        public private(set) int $workingWeightInGrams,
+        public private(set) array $sets,
     ) {}
 }

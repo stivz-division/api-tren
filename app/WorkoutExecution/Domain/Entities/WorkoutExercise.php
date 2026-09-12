@@ -8,37 +8,39 @@ use App\WorkoutExecution\Domain\Exceptions\InvalidWorkoutExerciseState;
 use App\WorkoutExecution\Domain\Exceptions\WorkoutExerciseHasNoSets;
 use App\WorkoutExecution\Domain\Exceptions\WorkoutExerciseIsNotEditable;
 use App\WorkoutExecution\Domain\ValueObjects\ExerciseSnapshot;
-use App\WorkoutExecution\Domain\ValueObjects\PlannedPrescription;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSet;
 
 final class WorkoutExercise
 {
     private WorkoutSetCollection $sets;
 
+    private WorkoutSetCollection $plannedSets;
+
     private function __construct(
         public private(set) readonly ExerciseSnapshot $snapshot,
-        public private(set) readonly PlannedPrescription $plannedPrescription,
+        WorkoutSetCollection $plannedSets,
         WorkoutSetCollection $sets,
         public private(set) WorkoutExerciseStatus $status,
     ) {
+        $this->plannedSets = $plannedSets->copy();
         $this->sets = $sets->copy();
     }
 
     public static function fromPlan(
         ExerciseSnapshot $snapshot,
-        PlannedPrescription $plannedPrescription,
+        WorkoutSetCollection $plannedSets,
     ): self {
         return new self(
             $snapshot,
-            $plannedPrescription,
-            WorkoutSetCollection::fromPrescription($plannedPrescription),
+            $plannedSets,
+            $plannedSets,
             WorkoutExerciseStatus::Pending,
         );
     }
 
     public static function restore(
         ExerciseSnapshot $snapshot,
-        PlannedPrescription $plannedPrescription,
+        WorkoutSetCollection $plannedSets,
         WorkoutSetCollection $sets,
         WorkoutExerciseStatus $status,
     ): self {
@@ -50,7 +52,13 @@ final class WorkoutExercise
             throw new InvalidWorkoutExerciseState;
         }
 
-        return new self($snapshot, $plannedPrescription, $sets, $status);
+        return new self($snapshot, $plannedSets, $sets, $status);
+    }
+
+    /** @return list<WorkoutSet> */
+    public function plannedSets(): array
+    {
+        return $this->plannedSets->copy()->all();
     }
 
     /** @return list<WorkoutSet> */
@@ -100,7 +108,7 @@ final class WorkoutExercise
     public function reopen(): void
     {
         if ($this->status === WorkoutExerciseStatus::Skipped) {
-            $this->sets = WorkoutSetCollection::fromPrescription($this->plannedPrescription);
+            $this->sets = $this->plannedSets->copy();
         }
 
         $this->status = WorkoutExerciseStatus::Pending;
@@ -108,6 +116,7 @@ final class WorkoutExercise
 
     public function __clone(): void
     {
+        $this->plannedSets = $this->plannedSets->copy();
         $this->sets = $this->sets->copy();
     }
 

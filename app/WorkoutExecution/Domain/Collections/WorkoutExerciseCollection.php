@@ -65,7 +65,7 @@ final class WorkoutExerciseCollection implements Countable, IteratorAggregate
         $exercises = array_map(
             static fn (WorkoutExercise $exercise): WorkoutExercise => WorkoutExercise::fromPlan(
                 $exercise->snapshot,
-                $exercise->plannedPrescription,
+                new WorkoutSetCollection(...$exercise->plannedSets()),
             ),
             $this->all(),
         );

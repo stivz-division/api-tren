@@ -110,7 +110,7 @@ final class InMemoryWorkoutSessionRepository implements WorkoutSessionRepository
         $exercises = array_map(
             static fn (WorkoutExercise $exercise): WorkoutExercise => WorkoutExercise::restore(
                 $exercise->snapshot,
-                $exercise->plannedPrescription,
+                new WorkoutSetCollection(...$exercise->plannedSets()),
                 new WorkoutSetCollection(...$exercise->workoutSets()),
                 $exercise->status,
             ),

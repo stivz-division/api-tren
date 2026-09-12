@@ -1,40 +1,21 @@
 <?php
 
-use App\WorkoutPlanning\Domain\Entities\PlannedExercise;
-use App\WorkoutPlanning\Domain\ValueObjects\ExerciseId;
 use App\WorkoutPlanning\Domain\ValueObjects\ExercisePosition;
-use App\WorkoutPlanning\Domain\ValueObjects\RepetitionsPerSet;
-use App\WorkoutPlanning\Domain\ValueObjects\SetsCount;
-use App\WorkoutPlanning\Domain\ValueObjects\WorkingWeight;
+use Tests\Support\WorkoutPlanning\PlannedExerciseFixture;
 
-it('changes the complete planned prescription', function () {
-    $exercise = new PlannedExercise(
-        new ExerciseId(7),
-        new SetsCount(3),
-        new RepetitionsPerSet(6),
-        new WorkingWeight(100_000),
-        new ExercisePosition(1),
-    );
+it('replaces all individual planned sets', function () {
+    $exercise = PlannedExerciseFixture::exercise(exerciseId: 7);
 
-    $exercise->changePrescription(
-        new SetsCount(4),
-        new RepetitionsPerSet(8),
-        new WorkingWeight(90_000),
-    );
+    $exercise->replaceSets(PlannedExerciseFixture::sets(4, 8, 90_000));
 
-    expect($exercise->setsCount->value)->toBe(4);
-    expect($exercise->repetitionsPerSet->value)->toBe(8);
-    expect($exercise->workingWeight->grams)->toBe(90_000);
+    expect($exercise->plannedSets())->toHaveCount(4)
+        ->and($exercise->plannedSets()[3]->position->value)->toBe(4)
+        ->and($exercise->plannedSets()[3]->repetitions->value)->toBe(8)
+        ->and($exercise->plannedSets()[3]->workingWeight->grams)->toBe(90_000);
 });
 
 it('changes its position without changing its identity', function () {
-    $exercise = new PlannedExercise(
-        new ExerciseId(7),
-        new SetsCount(3),
-        new RepetitionsPerSet(6),
-        new WorkingWeight(100_000),
-        new ExercisePosition(1),
-    );
+    $exercise = PlannedExerciseFixture::exercise(exerciseId: 7);
 
     $exercise->moveTo(new ExercisePosition(2));
 

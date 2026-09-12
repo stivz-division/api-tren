@@ -4,31 +4,20 @@ use App\WorkoutPlanning\Application\Exceptions\TrainingProgramNotFound;
 use App\WorkoutPlanning\Application\UseCases\GetTrainingProgramForWeekday\GetTrainingProgramForWeekday;
 use App\WorkoutPlanning\Application\UseCases\GetTrainingProgramForWeekday\GetTrainingProgramForWeekdayInput;
 use App\WorkoutPlanning\Domain\Collections\PlannedExerciseCollection;
-use App\WorkoutPlanning\Domain\Entities\PlannedExercise;
 use App\WorkoutPlanning\Domain\Entities\TrainingProgram;
 use App\WorkoutPlanning\Domain\Enums\Weekday;
 use App\WorkoutPlanning\Domain\Exceptions\InvalidWeekday;
-use App\WorkoutPlanning\Domain\ValueObjects\ExerciseId;
-use App\WorkoutPlanning\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutPlanning\Domain\ValueObjects\ProgramName;
-use App\WorkoutPlanning\Domain\ValueObjects\RepetitionsPerSet;
-use App\WorkoutPlanning\Domain\ValueObjects\SetsCount;
 use App\WorkoutPlanning\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutPlanning\Domain\ValueObjects\UserId;
-use App\WorkoutPlanning\Domain\ValueObjects\WorkingWeight;
 use Tests\Support\WorkoutPlanning\InMemoryTrainingProgramRepository;
+use Tests\Support\WorkoutPlanning\PlannedExerciseFixture;
 
 $mondayProgram = static fn (): TrainingProgram => TrainingProgram::restore(
     new TrainingProgramId(5),
     new UserId(7),
     Weekday::Monday,
-    new PlannedExerciseCollection(new PlannedExercise(
-        new ExerciseId(10),
-        new SetsCount(3),
-        new RepetitionsPerSet(6),
-        new WorkingWeight(100_000),
-        new ExercisePosition(1),
-    )),
+    new PlannedExerciseCollection(PlannedExerciseFixture::exercise()),
     ProgramName::default(),
 );
 
@@ -37,13 +26,7 @@ it('returns an owned program for an explicit weekday', function () use ($mondayP
         new TrainingProgramId(6),
         new UserId(7),
         Weekday::Tuesday,
-        new PlannedExerciseCollection(new PlannedExercise(
-            new ExerciseId(20),
-            new SetsCount(4),
-            new RepetitionsPerSet(8),
-            new WorkingWeight(50_000),
-            new ExercisePosition(1),
-        )),
+        new PlannedExerciseCollection(PlannedExerciseFixture::exercise(20, 1, 4, 8, 50_000)),
         ProgramName::default(),
     );
     $repository = new InMemoryTrainingProgramRepository(7, $mondayProgram(), $tuesdayProgram);

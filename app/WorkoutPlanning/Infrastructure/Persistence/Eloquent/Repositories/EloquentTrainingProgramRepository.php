@@ -7,6 +7,7 @@ use App\WorkoutPlanning\Domain\Entities\TrainingProgram;
 use App\WorkoutPlanning\Domain\Enums\Weekday;
 use App\WorkoutPlanning\Domain\Exceptions\TrainingProgramAlreadyExists;
 use App\WorkoutPlanning\Domain\Repositories\TrainingProgramRepository;
+use App\WorkoutPlanning\Domain\ValueObjects\PlannedSet;
 use App\WorkoutPlanning\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutPlanning\Domain\ValueObjects\UserId;
 use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Mappers\TrainingProgramMapper;
@@ -57,11 +58,9 @@ final readonly class EloquentTrainingProgramRepository implements TrainingProgra
                     'name' => $trainingProgram->name->value,
                 ]);
 
-                $model->plannedExercises()->createMany(
-                    $this->plannedExerciseAttributes($trainingProgram),
-                );
+                $this->persistPlannedExercises($model, $trainingProgram);
 
-                return $model->load('plannedExercises');
+                return $model->load('plannedExercises.plannedSets');
             });
         } catch (QueryException $exception) {
             if (! $this->isProgramSlotConflict($exception)) {
@@ -97,9 +96,7 @@ final readonly class EloquentTrainingProgramRepository implements TrainingProgra
                 'name' => $trainingProgram->name->value,
             ]);
             $model->plannedExercises()->delete();
-            $model->plannedExercises()->createMany(
-                $this->plannedExerciseAttributes($trainingProgram),
-            );
+            $this->persistPlannedExercises($model, $trainingProgram);
         });
     }
 
@@ -119,30 +116,51 @@ final readonly class EloquentTrainingProgramRepository implements TrainingProgra
     /** @return Builder<TrainingProgramModel> */
     private function queryWithExercises(): Builder
     {
-        return TrainingProgramModel::query()->with('plannedExercises');
+        return TrainingProgramModel::query()->with('plannedExercises.plannedSets');
+    }
+
+    /**
+     * @return array{exercise_id: int, position: int}
+     */
+    private function plannedExerciseAttributes(PlannedExercise $exercise): array
+    {
+        return [
+            'exercise_id' => $exercise->exerciseId->value,
+            'position' => $exercise->position->value,
+        ];
     }
 
     /**
      * @return list<array{
-     *     exercise_id: int,
-     *     sets: int,
-     *     repetitions_per_set: int,
-     *     working_weight_grams: int,
-     *     position: int
+     *     position: int,
+     *     repetitions: int,
+     *     working_weight_grams: int
      * }>
      */
-    private function plannedExerciseAttributes(TrainingProgram $trainingProgram): array
+    private function plannedSetAttributes(PlannedExercise $exercise): array
     {
         return array_map(
-            static fn (PlannedExercise $exercise): array => [
-                'exercise_id' => $exercise->exerciseId->value,
-                'sets' => $exercise->setsCount->value,
-                'repetitions_per_set' => $exercise->repetitionsPerSet->value,
-                'working_weight_grams' => $exercise->workingWeight->grams,
-                'position' => $exercise->position->value,
+            static fn (PlannedSet $set): array => [
+                'position' => $set->position->value,
+                'repetitions' => $set->repetitions->value,
+                'working_weight_grams' => $set->workingWeight->grams,
             ],
-            $trainingProgram->plannedExercises(),
+            $exercise->plannedSets(),
         );
+    }
+
+    private function persistPlannedExercises(
+        TrainingProgramModel $model,
+        TrainingProgram $trainingProgram,
+    ): void {
+        foreach ($trainingProgram->plannedExercises() as $exercise) {
+            $exerciseModel = $model->plannedExercises()->create(
+                $this->plannedExerciseAttributes($exercise),
+            );
+            $exerciseModel->plannedSets()->createMany(
+                $this->plannedSetAttributes($exercise),
+            );
+        }
     }
 
     private function identityOf(TrainingProgram $trainingProgram): TrainingProgramId

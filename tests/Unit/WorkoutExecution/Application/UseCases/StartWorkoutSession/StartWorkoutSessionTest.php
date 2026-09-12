@@ -1,6 +1,7 @@
 <?php
 
 use App\WorkoutExecution\Application\DTO\PlannedExerciseSnapshotData;
+use App\WorkoutExecution\Application\DTO\PlannedSetSnapshotData;
 use App\WorkoutExecution\Application\DTO\TrainingProgramSnapshotData;
 use App\WorkoutExecution\Application\Exceptions\InvalidTrainingProgramSnapshot;
 use App\WorkoutExecution\Application\Exceptions\TrainingProgramNotFound;
@@ -19,8 +20,16 @@ $programSnapshotData = static fn (): TrainingProgramSnapshotData => new Training
     name: 'Грудь и трицепс',
     scheduledWeekday: 1,
     exercises: [
-        new PlannedExerciseSnapshotData(10, 'Жим лежа', 3, 8, 90_000, 1),
-        new PlannedExerciseSnapshotData(20, 'Разгибание на трицепс', 3, 12, 36_000, 2),
+        new PlannedExerciseSnapshotData(10, 'Жим лежа', [
+            new PlannedSetSnapshotData(1, 3, 80_000),
+            new PlannedSetSnapshotData(2, 6, 100_000),
+            new PlannedSetSnapshotData(3, 1, 130_000),
+        ], 1),
+        new PlannedExerciseSnapshotData(20, 'Разгибание на трицепс', [
+            new PlannedSetSnapshotData(1, 12, 36_000),
+            new PlannedSetSnapshotData(2, 12, 36_000),
+            new PlannedSetSnapshotData(3, 12, 36_000),
+        ], 2),
     ],
 );
 
@@ -58,18 +67,23 @@ it('starts and saves a session from an immutable program snapshot', function () 
         $result->exercises[0]->exerciseId,
         $result->exercises[0]->name,
         $result->exercises[0]->position,
-        $result->exercises[0]->plannedSets,
-        $result->exercises[0]->plannedRepetitionsPerSet,
-        $result->exercises[0]->plannedWorkingWeightInGrams,
         $result->exercises[0]->status,
-    ])->toBe([10, 'Жим лежа', 1, 3, 8, 90_000, 'pending']);
+    ])->toBe([10, 'Жим лежа', 1, 'pending']);
+    expect(array_map(
+        static fn ($set): array => [$set->position, $set->repetitions, $set->workingWeightInGrams],
+        $result->exercises[0]->plannedSets,
+    ))->toBe([
+        [1, 3, 80_000],
+        [2, 6, 100_000],
+        [3, 1, 130_000],
+    ]);
     expect(array_map(
         static fn ($set): array => [$set->position, $set->repetitions, $set->workingWeightInGrams],
         $result->exercises[0]->sets,
     ))->toBe([
-        [1, 8, 90_000],
-        [2, 8, 90_000],
-        [3, 8, 90_000],
+        [1, 3, 80_000],
+        [2, 6, 100_000],
+        [3, 1, 130_000],
     ]);
     expect($provider->findCalls)->toBe(1);
     expect($repository->addCalls)->toBe(1);

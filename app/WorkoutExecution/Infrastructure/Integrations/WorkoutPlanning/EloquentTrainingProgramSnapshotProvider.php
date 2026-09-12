@@ -3,11 +3,13 @@
 namespace App\WorkoutExecution\Infrastructure\Integrations\WorkoutPlanning;
 
 use App\WorkoutExecution\Application\DTO\PlannedExerciseSnapshotData;
+use App\WorkoutExecution\Application\DTO\PlannedSetSnapshotData;
 use App\WorkoutExecution\Application\DTO\TrainingProgramSnapshotData;
 use App\WorkoutExecution\Application\Gateways\TrainingProgramSnapshotProvider;
 use App\WorkoutExecution\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutExecution\Domain\ValueObjects\UserId;
 use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Models\PlannedExerciseModel;
+use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Models\PlannedSetModel;
 use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Models\TrainingProgramModel;
 use Illuminate\Database\DatabaseManager;
 
@@ -30,14 +32,18 @@ final readonly class EloquentTrainingProgramSnapshotProvider implements Training
                 return null;
             }
 
-            $program->load('plannedExercises.exercise');
+            $program->load('plannedExercises.exercise', 'plannedExercises.plannedSets');
             $exercises = array_values($program->plannedExercises
                 ->map(static fn (PlannedExerciseModel $exercise): PlannedExerciseSnapshotData => new PlannedExerciseSnapshotData(
                     $exercise->exercise_id,
                     $exercise->exercise->name,
-                    $exercise->sets,
-                    $exercise->repetitions_per_set,
-                    $exercise->working_weight_grams,
+                    array_values($exercise->plannedSets
+                        ->map(static fn (PlannedSetModel $set): PlannedSetSnapshotData => new PlannedSetSnapshotData(
+                            $set->position,
+                            $set->repetitions,
+                            $set->working_weight_grams,
+                        ))
+                        ->all()),
                     $exercise->position,
                 ))
                 ->all());

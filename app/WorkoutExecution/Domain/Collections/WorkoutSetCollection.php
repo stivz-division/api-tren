@@ -3,8 +3,6 @@
 namespace App\WorkoutExecution\Domain\Collections;
 
 use App\WorkoutExecution\Domain\Exceptions\InvalidWorkoutSetOrder;
-use App\WorkoutExecution\Domain\ValueObjects\PlannedPrescription;
-use App\WorkoutExecution\Domain\ValueObjects\SetPosition;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSet;
 use ArrayIterator;
 use Countable;
@@ -28,21 +26,6 @@ final class WorkoutSetCollection implements Countable, IteratorAggregate
         }
 
         $this->assertContiguousPositions();
-    }
-
-    public static function fromPrescription(PlannedPrescription $prescription): self
-    {
-        $sets = [];
-
-        for ($position = 1; $position <= $prescription->setsCount->value; $position++) {
-            $sets[] = new WorkoutSet(
-                new SetPosition($position),
-                $prescription->repetitionsPerSet,
-                $prescription->workingWeight,
-            );
-        }
-
-        return new self(...$sets);
     }
 
     /** @return list<WorkoutSet> */

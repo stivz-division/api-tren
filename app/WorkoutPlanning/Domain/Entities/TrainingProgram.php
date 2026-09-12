@@ -3,14 +3,12 @@
 namespace App\WorkoutPlanning\Domain\Entities;
 
 use App\WorkoutPlanning\Domain\Collections\PlannedExerciseCollection;
+use App\WorkoutPlanning\Domain\Collections\PlannedSetCollection;
 use App\WorkoutPlanning\Domain\Enums\Weekday;
 use App\WorkoutPlanning\Domain\ValueObjects\ExerciseId;
 use App\WorkoutPlanning\Domain\ValueObjects\ProgramName;
-use App\WorkoutPlanning\Domain\ValueObjects\RepetitionsPerSet;
-use App\WorkoutPlanning\Domain\ValueObjects\SetsCount;
 use App\WorkoutPlanning\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutPlanning\Domain\ValueObjects\UserId;
-use App\WorkoutPlanning\Domain\ValueObjects\WorkingWeight;
 
 final class TrainingProgram
 {
@@ -75,30 +73,20 @@ final class TrainingProgram
 
     public function addExercise(
         ExerciseId $exerciseId,
-        SetsCount $setsCount,
-        RepetitionsPerSet $repetitionsPerSet,
-        WorkingWeight $workingWeight,
+        PlannedSetCollection $sets,
     ): void {
         $this->exercises->add(new PlannedExercise(
             $exerciseId,
-            $setsCount,
-            $repetitionsPerSet,
-            $workingWeight,
+            $sets,
             $this->exercises->nextPosition(),
         ));
     }
 
-    public function changeExercisePrescription(
+    public function replaceExerciseSets(
         ExerciseId $exerciseId,
-        SetsCount $setsCount,
-        RepetitionsPerSet $repetitionsPerSet,
-        WorkingWeight $workingWeight,
+        PlannedSetCollection $sets,
     ): void {
-        $this->exercises->get($exerciseId)->changePrescription(
-            $setsCount,
-            $repetitionsPerSet,
-            $workingWeight,
-        );
+        $this->exercises->get($exerciseId)->replaceSets($sets);
     }
 
     public function removeExercise(ExerciseId $exerciseId): void

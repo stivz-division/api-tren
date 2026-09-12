@@ -14,19 +14,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $exercise_id
  * @property string $exercise_name
  * @property int $position
- * @property int $planned_sets
- * @property int $planned_repetitions_per_set
- * @property int $planned_working_weight_grams
  * @property string $status
+ * @property-read Collection<int, WorkoutPlannedSetModel> $plannedSets
  * @property-read Collection<int, WorkoutSetModel> $workoutSets
  */
 #[Fillable([
     'exercise_id',
     'exercise_name',
     'position',
-    'planned_sets',
-    'planned_repetitions_per_set',
-    'planned_working_weight_grams',
     'status',
 ])]
 final class WorkoutExerciseModel extends Model
@@ -49,6 +44,14 @@ final class WorkoutExerciseModel extends Model
             ->orderBy('id');
     }
 
+    /** @return HasMany<WorkoutPlannedSetModel, $this> */
+    public function plannedSets(): HasMany
+    {
+        return $this->hasMany(WorkoutPlannedSetModel::class, 'workout_exercise_id')
+            ->orderBy('position')
+            ->orderBy('id');
+    }
+
     /** @return array<string, string> */
     protected function casts(): array
     {
@@ -57,9 +60,6 @@ final class WorkoutExerciseModel extends Model
             'workout_session_id' => 'integer',
             'exercise_id' => 'integer',
             'position' => 'integer',
-            'planned_sets' => 'integer',
-            'planned_repetitions_per_set' => 'integer',
-            'planned_working_weight_grams' => 'integer',
         ];
     }
 }

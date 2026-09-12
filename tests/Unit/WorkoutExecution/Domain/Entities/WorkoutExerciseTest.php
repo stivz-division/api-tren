@@ -10,12 +10,11 @@ use App\WorkoutExecution\Domain\ValueObjects\ExerciseId;
 use App\WorkoutExecution\Domain\ValueObjects\ExerciseName;
 use App\WorkoutExecution\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutExecution\Domain\ValueObjects\ExerciseSnapshot;
-use App\WorkoutExecution\Domain\ValueObjects\PlannedPrescription;
 use App\WorkoutExecution\Domain\ValueObjects\Repetitions;
 use App\WorkoutExecution\Domain\ValueObjects\SetPosition;
-use App\WorkoutExecution\Domain\ValueObjects\SetsCount;
 use App\WorkoutExecution\Domain\ValueObjects\WorkingWeight;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSet;
+use Tests\Support\WorkoutExecution\WorkoutSessionFixture;
 
 $createExercise = static fn (): WorkoutExercise => WorkoutExercise::fromPlan(
     new ExerciseSnapshot(
@@ -23,11 +22,7 @@ $createExercise = static fn (): WorkoutExercise => WorkoutExercise::fromPlan(
         new ExerciseName('Жим лежа'),
         new ExercisePosition(1),
     ),
-    new PlannedPrescription(
-        new SetsCount(3),
-        new Repetitions(8),
-        new WorkingWeight(90_000),
-    ),
+    WorkoutSessionFixture::sets(),
 );
 
 $changedSets = static fn (): WorkoutSetCollection => new WorkoutSetCollection(
@@ -37,11 +32,11 @@ $changedSets = static fn (): WorkoutSetCollection => new WorkoutSetCollection(
     new WorkoutSet(new SetPosition(4), new Repetitions(6), new WorkingWeight(95_000)),
 );
 
-it('initializes editable sets from the planned prescription', function () use ($createExercise) {
+it('initializes editable sets from the individual planned sets', function () use ($createExercise) {
     $exercise = $createExercise();
 
     expect($exercise->status)->toBe(WorkoutExerciseStatus::Pending);
-    expect($exercise->plannedPrescription->setsCount->value)->toBe(3);
+    expect($exercise->plannedSets())->toHaveCount(3);
     expect($exercise->workoutSets())->toHaveCount(3);
 });
 
@@ -182,7 +177,7 @@ it('rejects restoring a skipped exercise with saved sets', function () use ($cre
 
     expect(fn () => WorkoutExercise::restore(
         $exercise->snapshot,
-        $exercise->plannedPrescription,
+        new WorkoutSetCollection(...$exercise->plannedSets()),
         new WorkoutSetCollection(...$exercise->workoutSets()),
         WorkoutExerciseStatus::Skipped,
     ))->toThrow(InvalidWorkoutExerciseState::class);

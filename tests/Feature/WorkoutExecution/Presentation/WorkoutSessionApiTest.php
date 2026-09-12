@@ -40,21 +40,23 @@ $createProgram = static function (
         'weekday' => $weekday,
         'name' => $name,
     ]);
-    $program->plannedExercises()->createMany([
-        [
-            'exercise_id' => $benchPress->id,
-            'sets' => 3,
-            'repetitions_per_set' => 8,
-            'working_weight_grams' => 90_000,
-            'position' => 1,
-        ],
-        [
-            'exercise_id' => $triceps->id,
-            'sets' => 3,
-            'repetitions_per_set' => 12,
-            'working_weight_grams' => 36_000,
-            'position' => 2,
-        ],
+    $benchPressPlan = $program->plannedExercises()->create([
+        'exercise_id' => $benchPress->id,
+        'position' => 1,
+    ]);
+    $benchPressPlan->plannedSets()->createMany([
+        ['position' => 1, 'repetitions' => 10, 'working_weight_grams' => 80_000],
+        ['position' => 2, 'repetitions' => 8, 'working_weight_grams' => 90_000],
+        ['position' => 3, 'repetitions' => 6, 'working_weight_grams' => 100_000],
+    ]);
+    $tricepsPlan = $program->plannedExercises()->create([
+        'exercise_id' => $triceps->id,
+        'position' => 2,
+    ]);
+    $tricepsPlan->plannedSets()->createMany([
+        ['position' => 1, 'repetitions' => 12, 'working_weight_grams' => 36_000],
+        ['position' => 2, 'repetitions' => 12, 'working_weight_grams' => 36_000],
+        ['position' => 3, 'repetitions' => 12, 'working_weight_grams' => 36_000],
     ]);
 
     return [$program, $benchPress, $triceps];
@@ -84,7 +86,7 @@ it('returns null data when the authenticated user has no active session', functi
         ->assertExactJson(['data' => null]);
 });
 
-it('starts a session and returns its complete plan and actual sets', function () use ($createProgram): void {
+it('starts a session with immutable planned sets and matching actual sets', function () use ($createProgram): void {
     $user = User::factory()->create();
     [$program, $benchPress] = $createProgram($user);
     Sanctum::actingAs($user);
@@ -104,16 +106,47 @@ it('starts a session and returns its complete plan and actual sets', function ()
         ->assertJsonPath('data.cancelled_at', null)
         ->assertJsonPath('data.exercises.0.exercise_id', $benchPress->id)
         ->assertJsonPath('data.exercises.0.name', 'Жим лежа')
-        ->assertJsonPath('data.exercises.0.planned_sets', 3)
-        ->assertJsonPath('data.exercises.0.planned_repetitions_per_set', 8)
-        ->assertJsonPath('data.exercises.0.planned_working_weight_kg', 90)
+        ->assertJsonPath('data.exercises.0.planned_sets', [
+            ['position' => 1, 'repetitions' => 10, 'working_weight_kg' => 80],
+            ['position' => 2, 'repetitions' => 8, 'working_weight_kg' => 90],
+            ['position' => 3, 'repetitions' => 6, 'working_weight_kg' => 100],
+        ])
         ->assertJsonPath('data.exercises.0.sets.0.position', 1)
-        ->assertJsonPath('data.exercises.0.sets.0.repetitions', 8)
-        ->assertJsonPath('data.exercises.0.sets.0.working_weight_kg', 90)
+        ->assertJsonPath('data.exercises.0.sets.0.repetitions', 10)
+        ->assertJsonPath('data.exercises.0.sets.0.working_weight_kg', 80)
         ->assertJsonMissingPath('data.user_id');
     $this->assertDatabaseCount('workout_sessions', 1);
     $this->assertDatabaseCount('workout_exercises', 2);
+    $this->assertDatabaseCount('workout_planned_sets', 6);
     $this->assertDatabaseCount('workout_sets', 6);
+});
+
+it('keeps the per-set snapshot after the source training program changes', function () use ($createProgram): void {
+    $user = User::factory()->create();
+    [$program, $benchPress] = $createProgram($user);
+    Sanctum::actingAs($user);
+    $this->putJson('/api/workout-sessions/active', [
+        'training_program_id' => $program->id,
+    ])->assertOk();
+    $plannedExercise = $program->plannedExercises()
+        ->where('exercise_id', $benchPress->id)
+        ->firstOrFail();
+
+    $plannedExercise->plannedSets()->delete();
+    $plannedExercise->plannedSets()->create([
+        'position' => 1,
+        'repetitions' => 1,
+        'working_weight_grams' => 200_000,
+    ]);
+
+    $this->getJson('/api/workout-sessions/active')
+        ->assertOk()
+        ->assertJsonPath('data.exercises.0.planned_sets', [
+            ['position' => 1, 'repetitions' => 10, 'working_weight_kg' => 80],
+            ['position' => 2, 'repetitions' => 8, 'working_weight_kg' => 90],
+            ['position' => 3, 'repetitions' => 6, 'working_weight_kg' => 100],
+        ]);
+    $this->assertDatabaseCount('workout_planned_sets', 6);
 });
 
 it('returns the same active session when start is retried for the same program', function () use ($createProgram): void {
@@ -350,8 +383,8 @@ it('does not expose or mutate another user session', function () use ($createPro
     ]);
     $this->assertDatabaseHas('workout_sets', [
         'position' => 1,
-        'repetitions' => 8,
-        'working_weight_grams' => 90_000,
+        'repetitions' => 10,
+        'working_weight_grams' => 80_000,
     ]);
 });
 

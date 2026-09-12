@@ -3,15 +3,17 @@
 use App\Models\Exercise;
 use App\Models\User;
 use App\WorkoutPlanning\Domain\Collections\PlannedExerciseCollection;
+use App\WorkoutPlanning\Domain\Collections\PlannedSetCollection;
 use App\WorkoutPlanning\Domain\Entities\PlannedExercise;
 use App\WorkoutPlanning\Domain\Entities\TrainingProgram;
 use App\WorkoutPlanning\Domain\Enums\Weekday;
 use App\WorkoutPlanning\Domain\Exceptions\TrainingProgramAlreadyExists;
 use App\WorkoutPlanning\Domain\ValueObjects\ExerciseId;
 use App\WorkoutPlanning\Domain\ValueObjects\ExercisePosition;
+use App\WorkoutPlanning\Domain\ValueObjects\PlannedSet;
 use App\WorkoutPlanning\Domain\ValueObjects\ProgramName;
-use App\WorkoutPlanning\Domain\ValueObjects\RepetitionsPerSet;
-use App\WorkoutPlanning\Domain\ValueObjects\SetsCount;
+use App\WorkoutPlanning\Domain\ValueObjects\Repetitions;
+use App\WorkoutPlanning\Domain\ValueObjects\SetPosition;
 use App\WorkoutPlanning\Domain\ValueObjects\UserId;
 use App\WorkoutPlanning\Domain\ValueObjects\WorkingWeight;
 use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Mappers\TrainingProgramMapper;
@@ -34,9 +36,14 @@ $plannedExercise = static fn (
     int $position,
 ): PlannedExercise => new PlannedExercise(
     new ExerciseId($exercise->id),
-    new SetsCount($sets),
-    new RepetitionsPerSet($repetitions),
-    new WorkingWeight($weightInGrams),
+    new PlannedSetCollection(...array_map(
+        static fn (int $position): PlannedSet => new PlannedSet(
+            new SetPosition($position),
+            new Repetitions($repetitions),
+            new WorkingWeight($weightInGrams),
+        ),
+        range(1, $sets),
+    )),
     new ExercisePosition($position),
 );
 
@@ -67,10 +74,13 @@ it('persists and rehydrates the complete aggregate', function () use ($repositor
     $this->assertDatabaseHas('planned_exercises', [
         'training_program_id' => $persistedProgramId->value,
         'exercise_id' => $benchPress->id,
-        'sets' => 3,
-        'repetitions_per_set' => 6,
-        'working_weight_grams' => 100_000,
         'position' => 1,
+    ]);
+    $this->assertDatabaseCount('planned_sets', 7);
+    $this->assertDatabaseHas('planned_sets', [
+        'position' => 3,
+        'repetitions' => 6,
+        'working_weight_grams' => 100_000,
     ]);
 
     $rehydratedProgram = $repository()->findForUserOnWeekday(
@@ -82,15 +92,17 @@ it('persists and rehydrates the complete aggregate', function () use ($repositor
     expect(array_map(
         static fn (PlannedExercise $exercise): array => [
             $exercise->exerciseId->value,
-            $exercise->setsCount->value,
-            $exercise->repetitionsPerSet->value,
-            $exercise->workingWeight->grams,
+            array_map(static fn (PlannedSet $set): array => [
+                $set->position->value,
+                $set->repetitions->value,
+                $set->workingWeight->grams,
+            ], $exercise->plannedSets()),
             $exercise->position->value,
         ],
         $rehydratedProgram?->plannedExercises() ?? [],
     ))->toBe([
-        [$benchPress->id, 3, 6, 100_000, 1],
-        [$squat->id, 4, 8, 120_000, 2],
+        [$benchPress->id, [[1, 6, 100_000], [2, 6, 100_000], [3, 6, 100_000]], 1],
+        [$squat->id, [[1, 8, 120_000], [2, 8, 120_000], [3, 8, 120_000], [4, 8, 120_000]], 2],
     ]);
 });
 
@@ -149,10 +161,13 @@ it('replaces the persisted exercise prescription in one save', function () use (
     $this->assertDatabaseHas('planned_exercises', [
         'training_program_id' => $trainingProgramId->value,
         'exercise_id' => $benchPress->id,
-        'sets' => 5,
-        'repetitions_per_set' => 5,
-        'working_weight_grams' => 110_000,
         'position' => 2,
+    ]);
+    $this->assertDatabaseCount('planned_sets', 9);
+    $this->assertDatabaseHas('planned_sets', [
+        'position' => 5,
+        'repetitions' => 5,
+        'working_weight_grams' => 110_000,
     ]);
 });
 
@@ -193,4 +208,5 @@ it('hard deletes the aggregate and all planned exercises', function () use ($rep
 
     $this->assertDatabaseMissing('training_programs', ['id' => $trainingProgramId->value]);
     $this->assertDatabaseMissing('planned_exercises', ['training_program_id' => $trainingProgramId->value]);
+    $this->assertDatabaseCount('planned_sets', 0);
 });

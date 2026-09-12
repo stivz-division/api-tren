@@ -3,6 +3,7 @@
 namespace Tests\Support\WorkoutExecution;
 
 use App\WorkoutExecution\Domain\Collections\WorkoutExerciseCollection;
+use App\WorkoutExecution\Domain\Collections\WorkoutSetCollection;
 use App\WorkoutExecution\Domain\Entities\WorkoutExercise;
 use App\WorkoutExecution\Domain\Entities\WorkoutSession;
 use App\WorkoutExecution\Domain\Enums\ScheduledWeekday;
@@ -11,15 +12,15 @@ use App\WorkoutExecution\Domain\ValueObjects\ExerciseId;
 use App\WorkoutExecution\Domain\ValueObjects\ExerciseName;
 use App\WorkoutExecution\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutExecution\Domain\ValueObjects\ExerciseSnapshot;
-use App\WorkoutExecution\Domain\ValueObjects\PlannedPrescription;
 use App\WorkoutExecution\Domain\ValueObjects\ProgramName;
 use App\WorkoutExecution\Domain\ValueObjects\Repetitions;
-use App\WorkoutExecution\Domain\ValueObjects\SetsCount;
+use App\WorkoutExecution\Domain\ValueObjects\SetPosition;
 use App\WorkoutExecution\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutExecution\Domain\ValueObjects\TrainingProgramSnapshot;
 use App\WorkoutExecution\Domain\ValueObjects\UserId;
 use App\WorkoutExecution\Domain\ValueObjects\WorkingWeight;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSessionId;
+use App\WorkoutExecution\Domain\ValueObjects\WorkoutSet;
 use DateTimeImmutable;
 use DateTimeZone;
 
@@ -63,11 +64,22 @@ final class WorkoutSessionFixture
                 new ExerciseName($name),
                 new ExercisePosition($position),
             ),
-            new PlannedPrescription(
-                new SetsCount($sets),
+            self::sets($sets, $repetitions, $weightInGrams),
+        );
+    }
+
+    public static function sets(
+        int $count = 3,
+        int $repetitions = 8,
+        int $weightInGrams = 90_000,
+    ): WorkoutSetCollection {
+        return new WorkoutSetCollection(...array_map(
+            static fn (int $position): WorkoutSet => new WorkoutSet(
+                new SetPosition($position),
                 new Repetitions($repetitions),
                 new WorkingWeight($weightInGrams),
             ),
-        );
+            range(1, $count),
+        ));
     }
 }

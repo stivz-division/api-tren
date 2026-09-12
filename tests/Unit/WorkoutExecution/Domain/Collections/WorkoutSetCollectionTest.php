@@ -2,10 +2,8 @@
 
 use App\WorkoutExecution\Domain\Collections\WorkoutSetCollection;
 use App\WorkoutExecution\Domain\Exceptions\InvalidWorkoutSetOrder;
-use App\WorkoutExecution\Domain\ValueObjects\PlannedPrescription;
 use App\WorkoutExecution\Domain\ValueObjects\Repetitions;
 use App\WorkoutExecution\Domain\ValueObjects\SetPosition;
-use App\WorkoutExecution\Domain\ValueObjects\SetsCount;
 use App\WorkoutExecution\Domain\ValueObjects\WorkingWeight;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSet;
 
@@ -15,20 +13,20 @@ $workoutSet = static fn (int $position, int $repetitions = 8, int $weight = 90_0
     new WorkingWeight($weight),
 );
 
-it('creates every initial set from the planned prescription', function () {
-    $sets = WorkoutSetCollection::fromPrescription(new PlannedPrescription(
-        new SetsCount(3),
-        new Repetitions(8),
-        new WorkingWeight(90_000),
-    ));
+it('preserves every individual planned set value', function () use ($workoutSet) {
+    $sets = new WorkoutSetCollection(
+        $workoutSet(1, 3, 80_000),
+        $workoutSet(2, 6, 100_000),
+        $workoutSet(3, 1, 130_000),
+    );
 
     expect(array_map(
         static fn (WorkoutSet $set): array => [$set->position->value, $set->repetitions->value, $set->workingWeight->grams],
         $sets->all(),
     ))->toBe([
-        [1, 8, 90_000],
-        [2, 8, 90_000],
-        [3, 8, 90_000],
+        [1, 3, 80_000],
+        [2, 6, 100_000],
+        [3, 1, 130_000],
     ]);
 });
 

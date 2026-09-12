@@ -1,28 +1,17 @@
 <?php
 
 use App\WorkoutPlanning\Domain\Collections\PlannedExerciseCollection;
-use App\WorkoutPlanning\Domain\Entities\PlannedExercise;
 use App\WorkoutPlanning\Domain\Entities\TrainingProgram;
 use App\WorkoutPlanning\Domain\Enums\Weekday;
 use App\WorkoutPlanning\Domain\Exceptions\TrainingProgramAlreadyExists;
-use App\WorkoutPlanning\Domain\ValueObjects\ExerciseId;
-use App\WorkoutPlanning\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutPlanning\Domain\ValueObjects\ProgramName;
-use App\WorkoutPlanning\Domain\ValueObjects\RepetitionsPerSet;
-use App\WorkoutPlanning\Domain\ValueObjects\SetsCount;
 use App\WorkoutPlanning\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutPlanning\Domain\ValueObjects\UserId;
-use App\WorkoutPlanning\Domain\ValueObjects\WorkingWeight;
 use Tests\Support\WorkoutPlanning\InMemoryTrainingProgramRepository;
+use Tests\Support\WorkoutPlanning\PlannedExerciseFixture;
 
 $plannedExercises = static fn (): PlannedExerciseCollection => new PlannedExerciseCollection(
-    new PlannedExercise(
-        new ExerciseId(10),
-        new SetsCount(3),
-        new RepetitionsPerSet(6),
-        new WorkingWeight(100_000),
-        new ExercisePosition(1),
-    ),
+    PlannedExerciseFixture::exercise(),
 );
 
 $persistedProgram = static fn (

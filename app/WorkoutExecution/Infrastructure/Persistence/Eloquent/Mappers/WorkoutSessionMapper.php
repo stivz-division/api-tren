@@ -13,11 +13,9 @@ use App\WorkoutExecution\Domain\ValueObjects\ExerciseId;
 use App\WorkoutExecution\Domain\ValueObjects\ExerciseName;
 use App\WorkoutExecution\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutExecution\Domain\ValueObjects\ExerciseSnapshot;
-use App\WorkoutExecution\Domain\ValueObjects\PlannedPrescription;
 use App\WorkoutExecution\Domain\ValueObjects\ProgramName;
 use App\WorkoutExecution\Domain\ValueObjects\Repetitions;
 use App\WorkoutExecution\Domain\ValueObjects\SetPosition;
-use App\WorkoutExecution\Domain\ValueObjects\SetsCount;
 use App\WorkoutExecution\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutExecution\Domain\ValueObjects\TrainingProgramSnapshot;
 use App\WorkoutExecution\Domain\ValueObjects\UserId;
@@ -25,6 +23,7 @@ use App\WorkoutExecution\Domain\ValueObjects\WorkingWeight;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSet;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutExerciseModel;
+use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutPlannedSetModel;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutSessionModel;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutSetModel;
 use Carbon\CarbonImmutable;
@@ -51,6 +50,27 @@ final readonly class WorkoutSessionMapper
                     );
                 }
 
+                if (! $exercise->relationLoaded('plannedSets')) {
+                    throw new LogicException(
+                        'Для восстановления упражнения необходимо загрузить запланированные подходы.',
+                    );
+                }
+
+                $plannedSets = $exercise->plannedSets
+                    ->map(static fn (WorkoutPlannedSetModel $set): WorkoutSet => new WorkoutSet(
+                        new SetPosition($set->position),
+                        new Repetitions($set->repetitions),
+                        new WorkingWeight($set->working_weight_grams),
+                    ))
+                    ->values()
+                    ->all();
+
+                if ($plannedSets === []) {
+                    throw new LogicException(
+                        'Сохранённое упражнение должно содержать запланированные подходы.',
+                    );
+                }
+
                 $sets = $exercise->workoutSets
                     ->map(static fn (WorkoutSetModel $set): WorkoutSet => new WorkoutSet(
                         new SetPosition($set->position),
@@ -66,11 +86,7 @@ final readonly class WorkoutSessionMapper
                         new ExerciseName($exercise->exercise_name),
                         new ExercisePosition($exercise->position),
                     ),
-                    new PlannedPrescription(
-                        new SetsCount($exercise->planned_sets),
-                        new Repetitions($exercise->planned_repetitions_per_set),
-                        new WorkingWeight($exercise->planned_working_weight_grams),
-                    ),
+                    new WorkoutSetCollection(...$plannedSets),
                     new WorkoutSetCollection(...$sets),
                     WorkoutExerciseStatus::from($exercise->status),
                 );

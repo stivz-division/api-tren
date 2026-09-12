@@ -11,20 +11,12 @@ use App\WorkoutPlanning\Domain\Exceptions\TrainingProgramMustContainExercise;
 use App\WorkoutPlanning\Domain\ValueObjects\ExerciseId;
 use App\WorkoutPlanning\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutPlanning\Domain\ValueObjects\ProgramName;
-use App\WorkoutPlanning\Domain\ValueObjects\RepetitionsPerSet;
-use App\WorkoutPlanning\Domain\ValueObjects\SetsCount;
 use App\WorkoutPlanning\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutPlanning\Domain\ValueObjects\UserId;
-use App\WorkoutPlanning\Domain\ValueObjects\WorkingWeight;
+use Tests\Support\WorkoutPlanning\PlannedExerciseFixture;
 
 $createProgram = static function (?ProgramName $name = null): TrainingProgram {
-    $exercise = new PlannedExercise(
-        new ExerciseId(10),
-        new SetsCount(3),
-        new RepetitionsPerSet(6),
-        new WorkingWeight(100_000),
-        new ExercisePosition(1),
-    );
+    $exercise = PlannedExerciseFixture::exercise();
 
     return TrainingProgram::create(
         new UserId(111_111_111),
@@ -49,13 +41,7 @@ it('restores a persisted program with its identity', function () {
         new TrainingProgramId(1),
         new UserId(111_111_111),
         Weekday::Monday,
-        new PlannedExerciseCollection(new PlannedExercise(
-            new ExerciseId(10),
-            new SetsCount(3),
-            new RepetitionsPerSet(6),
-            new WorkingWeight(100_000),
-            new ExercisePosition(1),
-        )),
+        new PlannedExerciseCollection(PlannedExerciseFixture::exercise()),
         ProgramName::default(),
     );
 
@@ -63,13 +49,7 @@ it('restores a persisted program with its identity', function () {
 });
 
 it('protects its exercises from mutations through external references', function () {
-    $exercise = new PlannedExercise(
-        new ExerciseId(10),
-        new SetsCount(3),
-        new RepetitionsPerSet(6),
-        new WorkingWeight(100_000),
-        new ExercisePosition(1),
-    );
+    $exercise = PlannedExerciseFixture::exercise();
     $externalCollection = new PlannedExerciseCollection($exercise);
     $program = TrainingProgram::create(
         new UserId(111_111_111),
@@ -77,22 +57,12 @@ it('protects its exercises from mutations through external references', function
         $externalCollection,
     );
 
-    $exercise->changePrescription(
-        new SetsCount(5),
-        new RepetitionsPerSet(5),
-        new WorkingWeight(110_000),
-    );
-    $externalCollection->add(new PlannedExercise(
-        new ExerciseId(20),
-        new SetsCount(4),
-        new RepetitionsPerSet(8),
-        new WorkingWeight(50_000),
-        new ExercisePosition(2),
-    ));
+    $exercise->replaceSets(PlannedExerciseFixture::sets(5, 5, 110_000));
+    $externalCollection->add(PlannedExerciseFixture::exercise(20, 2, 4, 8, 50_000));
     $program->plannedExercises()[0]->moveTo(new ExercisePosition(2));
 
     expect($program->plannedExercises())->toHaveCount(1);
-    expect($program->plannedExercises()[0]->setsCount->value)->toBe(3);
+    expect($program->plannedExercises()[0]->plannedSets())->toHaveCount(3);
     expect($program->plannedExercises()[0]->position->value)->toBe(1);
 });
 
@@ -110,24 +80,14 @@ it('renames a program', function () use ($createProgram) {
 
 it('replaces all planned exercises without keeping external references', function () use ($createProgram) {
     $program = $createProgram();
-    $replacement = new PlannedExerciseCollection(new PlannedExercise(
-        new ExerciseId(20),
-        new SetsCount(4),
-        new RepetitionsPerSet(8),
-        new WorkingWeight(50_000),
-        new ExercisePosition(1),
-    ));
+    $replacement = new PlannedExerciseCollection(PlannedExerciseFixture::exercise(20, 1, 4, 8, 50_000));
 
     $program->replaceExercises($replacement);
-    $replacement->get(new ExerciseId(20))->changePrescription(
-        new SetsCount(5),
-        new RepetitionsPerSet(5),
-        new WorkingWeight(60_000),
-    );
+    $replacement->get(new ExerciseId(20))->replaceSets(PlannedExerciseFixture::sets(5, 5, 60_000));
 
     expect($program->plannedExercises())->toHaveCount(1);
     expect($program->plannedExercises()[0]->exerciseId->value)->toBe(20);
-    expect($program->plannedExercises()[0]->setsCount->value)->toBe(4);
+    expect($program->plannedExercises()[0]->plannedSets())->toHaveCount(4);
 });
 
 it('adds an exercise once and appends it to the program', function () use ($createProgram) {
@@ -135,9 +95,7 @@ it('adds an exercise once and appends it to the program', function () use ($crea
 
     $program->addExercise(
         new ExerciseId(20),
-        new SetsCount(4),
-        new RepetitionsPerSet(8),
-        new WorkingWeight(50_000),
+        PlannedExerciseFixture::sets(4, 8, 50_000),
     );
 
     expect($program->plannedExercises())->toHaveCount(2);
@@ -150,27 +108,23 @@ it('rejects adding the same exercise twice', function () use ($createProgram) {
 
     expect(fn () => $program->addExercise(
         new ExerciseId(10),
-        new SetsCount(4),
-        new RepetitionsPerSet(8),
-        new WorkingWeight(90_000),
+        PlannedExerciseFixture::sets(4, 8, 90_000),
     ))->toThrow(ExerciseAlreadyPlanned::class);
 });
 
-it('changes a planned exercise prescription', function () use ($createProgram) {
+it('replaces an exercises planned sets', function () use ($createProgram) {
     $program = $createProgram();
 
-    $program->changeExercisePrescription(
+    $program->replaceExerciseSets(
         new ExerciseId(10),
-        new SetsCount(5),
-        new RepetitionsPerSet(5),
-        new WorkingWeight(110_000),
+        PlannedExerciseFixture::sets(5, 5, 110_000),
     );
 
     $exercise = $program->plannedExercises()[0];
 
-    expect($exercise->setsCount->value)->toBe(5);
-    expect($exercise->repetitionsPerSet->value)->toBe(5);
-    expect($exercise->workingWeight->grams)->toBe(110_000);
+    expect($exercise->plannedSets())->toHaveCount(5)
+        ->and($exercise->plannedSets()[4]->repetitions->value)->toBe(5)
+        ->and($exercise->plannedSets()[4]->workingWeight->grams)->toBe(110_000);
 });
 
 it('does not remove the last exercise', function () use ($createProgram) {
@@ -184,15 +138,11 @@ it('removes an exercise and closes the position gap', function () use ($createPr
     $program = $createProgram();
     $program->addExercise(
         new ExerciseId(20),
-        new SetsCount(4),
-        new RepetitionsPerSet(8),
-        new WorkingWeight(50_000),
+        PlannedExerciseFixture::sets(4, 8, 50_000),
     );
     $program->addExercise(
         new ExerciseId(30),
-        new SetsCount(2),
-        new RepetitionsPerSet(10),
-        new WorkingWeight(30_000),
+        PlannedExerciseFixture::sets(2, 10, 30_000),
     );
 
     $program->removeExercise(new ExerciseId(20));
@@ -209,11 +159,9 @@ it('removes an exercise and closes the position gap', function () use ($createPr
 it('rejects changing an exercise that is not planned', function () use ($createProgram) {
     $program = $createProgram();
 
-    expect(fn () => $program->changeExercisePrescription(
+    expect(fn () => $program->replaceExerciseSets(
         new ExerciseId(20),
-        new SetsCount(4),
-        new RepetitionsPerSet(8),
-        new WorkingWeight(50_000),
+        PlannedExerciseFixture::sets(4, 8, 50_000),
     ))->toThrow(PlannedExerciseNotFound::class);
 });
 
@@ -228,9 +176,7 @@ it('reorders its planned exercises', function () use ($createProgram) {
     $program = $createProgram();
     $program->addExercise(
         new ExerciseId(20),
-        new SetsCount(4),
-        new RepetitionsPerSet(8),
-        new WorkingWeight(50_000),
+        PlannedExerciseFixture::sets(4, 8, 50_000),
     );
 
     $program->reorderExercises(new ExerciseId(20), new ExerciseId(10));
@@ -245,9 +191,7 @@ it('rejects an incomplete exercise order', function () use ($createProgram) {
     $program = $createProgram();
     $program->addExercise(
         new ExerciseId(20),
-        new SetsCount(4),
-        new RepetitionsPerSet(8),
-        new WorkingWeight(50_000),
+        PlannedExerciseFixture::sets(4, 8, 50_000),
     );
 
     expect(fn () => $program->reorderExercises(new ExerciseId(10)))

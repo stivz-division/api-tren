@@ -7,18 +7,9 @@ use App\WorkoutPlanning\Domain\Exceptions\InvalidExerciseOrder;
 use App\WorkoutPlanning\Domain\Exceptions\PlannedExerciseNotFound;
 use App\WorkoutPlanning\Domain\Exceptions\TrainingProgramMustContainExercise;
 use App\WorkoutPlanning\Domain\ValueObjects\ExerciseId;
-use App\WorkoutPlanning\Domain\ValueObjects\ExercisePosition;
-use App\WorkoutPlanning\Domain\ValueObjects\RepetitionsPerSet;
-use App\WorkoutPlanning\Domain\ValueObjects\SetsCount;
-use App\WorkoutPlanning\Domain\ValueObjects\WorkingWeight;
+use Tests\Support\WorkoutPlanning\PlannedExerciseFixture;
 
-$plannedExercise = static fn (int $exerciseId, int $position): PlannedExercise => new PlannedExercise(
-    new ExerciseId($exerciseId),
-    new SetsCount(3),
-    new RepetitionsPerSet(6),
-    new WorkingWeight(100_000),
-    new ExercisePosition($position),
-);
+$plannedExercise = static fn (int $exerciseId, int $position): PlannedExercise => PlannedExerciseFixture::exercise($exerciseId, $position);
 
 it('keeps exercises ordered by their contiguous positions', function () use ($plannedExercise) {
     $exercises = new PlannedExerciseCollection(

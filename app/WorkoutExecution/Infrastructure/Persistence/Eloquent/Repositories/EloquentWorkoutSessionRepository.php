@@ -2,15 +2,20 @@
 
 namespace App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Repositories;
 
+use App\WorkoutExecution\Domain\Collections\WorkoutSetCollection;
 use App\WorkoutExecution\Domain\Entities\WorkoutExercise;
 use App\WorkoutExecution\Domain\Entities\WorkoutSession;
 use App\WorkoutExecution\Domain\Exceptions\ActiveWorkoutSessionAlreadyExists;
 use App\WorkoutExecution\Domain\Repositories\WorkoutSessionRepository;
+use App\WorkoutExecution\Domain\ValueObjects\Repetitions;
+use App\WorkoutExecution\Domain\ValueObjects\SetPosition;
 use App\WorkoutExecution\Domain\ValueObjects\UserId;
+use App\WorkoutExecution\Domain\ValueObjects\WorkingWeight;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSet;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Mappers\WorkoutSessionMapper;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutExerciseModel;
+use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutPlannedSetModel;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutSessionModel;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutSetModel;
 use DateTimeImmutable;
@@ -76,12 +81,15 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
                     $exerciseModel = $model->workoutExercises()->create(
                         $this->exerciseAttributes($exercise),
                     );
+                    $exerciseModel->plannedSets()->createMany(
+                        $this->plannedSetAttributes($exercise),
+                    );
                     $exerciseModel->workoutSets()->createMany(
                         $this->setAttributes($exercise),
                     );
                 }
 
-                return $model->load('workoutExercises.workoutSets');
+                return $model->load('workoutExercises.plannedSets', 'workoutExercises.workoutSets');
             });
         } catch (QueryException $exception) {
             if (! $this->isActiveSessionConflict($exception)) {
@@ -113,7 +121,10 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
             $this->assertProgramSnapshotUnchanged($model, $session);
 
             /** @var Collection<int, WorkoutExerciseModel> $exerciseModels */
-            $exerciseModels = $model->workoutExercises()->get()->keyBy('exercise_id');
+            $exerciseModels = $model->workoutExercises()
+                ->with('plannedSets')
+                ->get()
+                ->keyBy('exercise_id');
             $exercises = $session->workoutExercises();
 
             if ($exerciseModels->count() !== count($exercises)) {
@@ -156,7 +167,7 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
             return null;
         }
 
-        $model->load('workoutExercises.workoutSets');
+        $model->load('workoutExercises.plannedSets', 'workoutExercises.workoutSets');
 
         return $this->mapper->toDomain($model);
     }
@@ -166,9 +177,6 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
      *     exercise_id: int,
      *     exercise_name: string,
      *     position: int,
-     *     planned_sets: int,
-     *     planned_repetitions_per_set: int,
-     *     planned_working_weight_grams: int,
      *     status: string
      * }
      */
@@ -178,9 +186,6 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
             'exercise_id' => $exercise->snapshot->exerciseId->value,
             'exercise_name' => $exercise->snapshot->name->value,
             'position' => $exercise->snapshot->position->value,
-            'planned_sets' => $exercise->plannedPrescription->setsCount->value,
-            'planned_repetitions_per_set' => $exercise->plannedPrescription->repetitionsPerSet->value,
-            'planned_working_weight_grams' => $exercise->plannedPrescription->workingWeight->grams,
             'status' => $exercise->status->value,
         ];
     }
@@ -201,6 +206,25 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
                 'working_weight_grams' => $set->workingWeight->grams,
             ],
             $exercise->workoutSets(),
+        );
+    }
+
+    /**
+     * @return list<array{
+     *     position: int,
+     *     repetitions: int,
+     *     working_weight_grams: int
+     * }>
+     */
+    private function plannedSetAttributes(WorkoutExercise $exercise): array
+    {
+        return array_map(
+            static fn (WorkoutSet $set): array => [
+                'position' => $set->position->value,
+                'repetitions' => $set->repetitions->value,
+                'working_weight_grams' => $set->workingWeight->grams,
+            ],
+            $exercise->plannedSets(),
         );
     }
 
@@ -225,12 +249,25 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
         if (
             $model->exercise_name !== $exercise->snapshot->name->value
             || $model->position !== $exercise->snapshot->position->value
-            || $model->planned_sets !== $exercise->plannedPrescription->setsCount->value
-            || $model->planned_repetitions_per_set !== $exercise->plannedPrescription->repetitionsPerSet->value
-            || $model->planned_working_weight_grams !== $exercise->plannedPrescription->workingWeight->grams
+            || ! $this->persistedPlannedSets($model)->equals(
+                new WorkoutSetCollection(...$exercise->plannedSets()),
+            )
         ) {
             throw new LogicException('Нельзя изменить снимок упражнения сохранённой тренировочной сессии.');
         }
+    }
+
+    private function persistedPlannedSets(WorkoutExerciseModel $model): WorkoutSetCollection
+    {
+        $sets = $model->plannedSets
+            ->map(static fn (WorkoutPlannedSetModel $set): WorkoutSet => new WorkoutSet(
+                new SetPosition($set->position),
+                new Repetitions($set->repetitions),
+                new WorkingWeight($set->working_weight_grams),
+            ))
+            ->all();
+
+        return new WorkoutSetCollection(...$sets);
     }
 
     private function toUtc(DateTimeImmutable $date): DateTimeImmutable

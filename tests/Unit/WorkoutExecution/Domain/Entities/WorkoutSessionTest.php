@@ -15,17 +15,16 @@ use App\WorkoutExecution\Domain\ValueObjects\ExerciseId;
 use App\WorkoutExecution\Domain\ValueObjects\ExerciseName;
 use App\WorkoutExecution\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutExecution\Domain\ValueObjects\ExerciseSnapshot;
-use App\WorkoutExecution\Domain\ValueObjects\PlannedPrescription;
 use App\WorkoutExecution\Domain\ValueObjects\ProgramName;
 use App\WorkoutExecution\Domain\ValueObjects\Repetitions;
 use App\WorkoutExecution\Domain\ValueObjects\SetPosition;
-use App\WorkoutExecution\Domain\ValueObjects\SetsCount;
 use App\WorkoutExecution\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutExecution\Domain\ValueObjects\TrainingProgramSnapshot;
 use App\WorkoutExecution\Domain\ValueObjects\UserId;
 use App\WorkoutExecution\Domain\ValueObjects\WorkingWeight;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSet;
+use Tests\Support\WorkoutExecution\WorkoutSessionFixture;
 
 $workoutExercise = static fn (int $exerciseId, int $position): WorkoutExercise => WorkoutExercise::fromPlan(
     new ExerciseSnapshot(
@@ -33,7 +32,7 @@ $workoutExercise = static fn (int $exerciseId, int $position): WorkoutExercise =
         new ExerciseName('Упражнение '.$exerciseId),
         new ExercisePosition($position),
     ),
-    new PlannedPrescription(new SetsCount(3), new Repetitions(8), new WorkingWeight(90_000)),
+    WorkoutSessionFixture::sets(),
 );
 
 $startedAt = new DateTimeImmutable('2026-09-15 19:00:00', new DateTimeZone('Europe/Moscow'));

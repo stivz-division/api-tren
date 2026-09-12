@@ -4,6 +4,7 @@ namespace App\WorkoutPlanning\Presentation\Http\Requests;
 
 use App\Models\User;
 use App\WorkoutPlanning\Application\DTO\PlannedExerciseInput;
+use App\WorkoutPlanning\Application\DTO\PlannedSetInput;
 use App\WorkoutPlanning\Application\UseCases\UpdateTrainingProgram\UpdateTrainingProgramInput;
 use App\WorkoutPlanning\Presentation\Http\Support\WorkingWeightConverter;
 use Illuminate\Foundation\Http\FormRequest;
@@ -23,19 +24,22 @@ final class UpdateTrainingProgramRequest extends FormRequest
         return [
             'weekday' => ['prohibited'],
             'name' => ['required', 'string', 'max:255'],
-            'exercises' => ['required', 'array', 'min:1'],
+            'exercises' => ['required', 'array', 'list', 'min:1'],
+            'exercises.*' => ['array:exercise_id,sets'],
             'exercises.*.exercise_id' => [
                 'required',
                 'integer',
                 'distinct:strict',
                 Rule::exists('exercises', 'id'),
             ],
-            'exercises.*.sets' => ['required', 'integer', 'min:1'],
-            'exercises.*.repetitions_per_set' => ['required', 'integer', 'min:1'],
-            'exercises.*.working_weight_kg' => [
+            'exercises.*.sets' => ['required', 'array', 'list', 'min:1', 'max:100'],
+            'exercises.*.sets.*' => ['array:repetitions,working_weight_kg'],
+            'exercises.*.sets.*.repetitions' => ['required', 'integer', 'min:1'],
+            'exercises.*.sets.*.working_weight_kg' => [
                 'required',
                 'numeric',
                 'min:0',
+                'max:'.WorkingWeightConverter::MAX_KILOGRAMS,
                 'decimal:0,2',
             ],
         ];
@@ -51,21 +55,27 @@ final class UpdateTrainingProgramRequest extends FormRequest
             'name.max' => 'Название программы не должно быть длиннее 255 символов.',
             'exercises.required' => 'Добавьте хотя бы одно упражнение.',
             'exercises.array' => 'Упражнения должны быть переданы списком.',
+            'exercises.list' => 'Упражнения должны быть переданы упорядоченным списком.',
             'exercises.min' => 'Добавьте хотя бы одно упражнение.',
+            'exercises.*.array' => 'Каждое упражнение должно содержать только идентификатор и подходы.',
             'exercises.*.exercise_id.required' => 'Укажите упражнение.',
             'exercises.*.exercise_id.integer' => 'Идентификатор упражнения должен быть целым числом.',
             'exercises.*.exercise_id.distinct' => 'Одно упражнение нельзя добавить дважды.',
             'exercises.*.exercise_id.exists' => 'Выбранное упражнение не найдено.',
-            'exercises.*.sets.required' => 'Укажите количество подходов.',
-            'exercises.*.sets.integer' => 'Количество подходов должно быть целым числом.',
-            'exercises.*.sets.min' => 'Количество подходов должно быть не меньше 1.',
-            'exercises.*.repetitions_per_set.required' => 'Укажите количество повторений.',
-            'exercises.*.repetitions_per_set.integer' => 'Количество повторений должно быть целым числом.',
-            'exercises.*.repetitions_per_set.min' => 'Количество повторений должно быть не меньше 1.',
-            'exercises.*.working_weight_kg.required' => 'Укажите рабочий вес.',
-            'exercises.*.working_weight_kg.numeric' => 'Рабочий вес должен быть числом.',
-            'exercises.*.working_weight_kg.min' => 'Рабочий вес не может быть отрицательным.',
-            'exercises.*.working_weight_kg.decimal' => 'Рабочий вес может содержать не более двух знаков после запятой.',
+            'exercises.*.sets.required' => 'Добавьте хотя бы один подход.',
+            'exercises.*.sets.array' => 'Подходы должны быть переданы списком.',
+            'exercises.*.sets.list' => 'Подходы должны быть переданы упорядоченным списком.',
+            'exercises.*.sets.min' => 'Добавьте хотя бы один подход.',
+            'exercises.*.sets.max' => 'Для одного упражнения можно запланировать не более 100 подходов.',
+            'exercises.*.sets.*.array' => 'Каждый подход должен содержать только повторения и рабочий вес.',
+            'exercises.*.sets.*.repetitions.required' => 'Укажите количество повторений.',
+            'exercises.*.sets.*.repetitions.integer' => 'Количество повторений должно быть целым числом.',
+            'exercises.*.sets.*.repetitions.min' => 'Количество повторений должно быть не меньше 1.',
+            'exercises.*.sets.*.working_weight_kg.required' => 'Укажите рабочий вес.',
+            'exercises.*.sets.*.working_weight_kg.numeric' => 'Рабочий вес должен быть числом.',
+            'exercises.*.sets.*.working_weight_kg.min' => 'Рабочий вес не может быть отрицательным.',
+            'exercises.*.sets.*.working_weight_kg.max' => 'Рабочий вес превышает допустимое значение.',
+            'exercises.*.sets.*.working_weight_kg.decimal' => 'Рабочий вес может содержать не более двух знаков после запятой.',
         ];
     }
 
@@ -81,9 +91,10 @@ final class UpdateTrainingProgramRequest extends FormRequest
          *     name: string,
          *     exercises: list<array{
          *         exercise_id: int,
-         *         sets: int,
-         *         repetitions_per_set: int,
-         *         working_weight_kg: int|float|string
+         *         sets: non-empty-list<array{
+         *             repetitions: int,
+         *             working_weight_kg: int|float|string
+         *         }>
          *     }>
          * } $validated
          */
@@ -96,10 +107,14 @@ final class UpdateTrainingProgramRequest extends FormRequest
             exercises: array_map(
                 static fn (array $exercise): PlannedExerciseInput => new PlannedExerciseInput(
                     exerciseId: $exercise['exercise_id'],
-                    sets: $exercise['sets'],
-                    repetitionsPerSet: $exercise['repetitions_per_set'],
-                    workingWeightInGrams: WorkingWeightConverter::kilogramsToGrams(
-                        $exercise['working_weight_kg'],
+                    sets: array_map(
+                        static fn (array $set): PlannedSetInput => new PlannedSetInput(
+                            repetitions: $set['repetitions'],
+                            workingWeightInGrams: WorkingWeightConverter::kilogramsToGrams(
+                                $set['working_weight_kg'],
+                            ),
+                        ),
+                        $exercise['sets'],
                     ),
                 ),
                 $validated['exercises'],

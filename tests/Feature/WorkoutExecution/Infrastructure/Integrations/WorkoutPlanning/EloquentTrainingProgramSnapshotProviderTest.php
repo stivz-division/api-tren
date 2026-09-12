@@ -24,21 +24,22 @@ it('returns an ordered immutable snapshot of an owned training program', functio
         'weekday' => 1,
         'name' => 'Грудь и трицепс',
     ]);
-    $program->plannedExercises()->createMany([
-        [
-            'exercise_id' => $triceps->id,
-            'sets' => 3,
-            'repetitions_per_set' => 12,
-            'working_weight_grams' => 36_000,
-            'position' => 2,
-        ],
-        [
-            'exercise_id' => $benchPress->id,
-            'sets' => 3,
-            'repetitions_per_set' => 8,
-            'working_weight_grams' => 90_000,
-            'position' => 1,
-        ],
+    $tricepsPlan = $program->plannedExercises()->create([
+        'exercise_id' => $triceps->id,
+        'position' => 2,
+    ]);
+    $tricepsPlan->plannedSets()->createMany([
+        ['position' => 1, 'repetitions' => 12, 'working_weight_grams' => 36_000],
+        ['position' => 2, 'repetitions' => 10, 'working_weight_grams' => 40_000],
+    ]);
+    $benchPressPlan = $program->plannedExercises()->create([
+        'exercise_id' => $benchPress->id,
+        'position' => 1,
+    ]);
+    $benchPressPlan->plannedSets()->createMany([
+        ['position' => 1, 'repetitions' => 3, 'working_weight_grams' => 80_000],
+        ['position' => 2, 'repetitions' => 6, 'working_weight_grams' => 100_000],
+        ['position' => 3, 'repetitions' => 1, 'working_weight_grams' => 130_000],
     ]);
 
     $snapshot = $provider()->findForUser(
@@ -59,15 +60,17 @@ it('returns an ordered immutable snapshot of an owned training program', functio
         static fn ($exercise): array => [
             $exercise->exerciseId,
             $exercise->name,
-            $exercise->sets,
-            $exercise->repetitionsPerSet,
-            $exercise->workingWeightInGrams,
+            array_map(static fn ($set): array => [
+                $set->position,
+                $set->repetitions,
+                $set->workingWeightInGrams,
+            ], $exercise->sets),
             $exercise->position,
         ],
         $snapshot->exercises,
     ))->toBe([
-        [$benchPress->id, 'Жим лежа', 3, 8, 90_000, 1],
-        [$triceps->id, 'Разгибание на трицепс', 3, 12, 36_000, 2],
+        [$benchPress->id, 'Жим лежа', [[1, 3, 80_000], [2, 6, 100_000], [3, 1, 130_000]], 1],
+        [$triceps->id, 'Разгибание на трицепс', [[1, 12, 36_000], [2, 10, 40_000]], 2],
     ]);
 });
 

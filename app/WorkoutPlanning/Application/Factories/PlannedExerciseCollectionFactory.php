@@ -10,14 +10,12 @@ use App\WorkoutPlanning\Domain\Entities\PlannedExercise;
 use App\WorkoutPlanning\Domain\Exceptions\TrainingProgramMustContainExercise;
 use App\WorkoutPlanning\Domain\ValueObjects\ExerciseId;
 use App\WorkoutPlanning\Domain\ValueObjects\ExercisePosition;
-use App\WorkoutPlanning\Domain\ValueObjects\RepetitionsPerSet;
-use App\WorkoutPlanning\Domain\ValueObjects\SetsCount;
-use App\WorkoutPlanning\Domain\ValueObjects\WorkingWeight;
 
 final readonly class PlannedExerciseCollectionFactory
 {
     public function __construct(
         private ExerciseCatalog $exerciseCatalog,
+        private PlannedSetCollectionFactory $setCollectionFactory,
     ) {}
 
     /** @param list<PlannedExerciseInput> $exerciseInputs */
@@ -39,11 +37,9 @@ final readonly class PlannedExerciseCollectionFactory
         }
 
         $plannedExercises = array_map(
-            static fn (PlannedExerciseInput $input, int $position): PlannedExercise => new PlannedExercise(
+            fn (PlannedExerciseInput $input, int $position): PlannedExercise => new PlannedExercise(
                 new ExerciseId($input->exerciseId),
-                new SetsCount($input->sets),
-                new RepetitionsPerSet($input->repetitionsPerSet),
-                new WorkingWeight($input->workingWeightInGrams),
+                $this->setCollectionFactory->create($input->sets),
                 new ExercisePosition($position + 1),
             ),
             $exerciseInputs,

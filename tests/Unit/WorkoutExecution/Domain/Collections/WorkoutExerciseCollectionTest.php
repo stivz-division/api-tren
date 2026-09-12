@@ -10,10 +10,7 @@ use App\WorkoutExecution\Domain\ValueObjects\ExerciseId;
 use App\WorkoutExecution\Domain\ValueObjects\ExerciseName;
 use App\WorkoutExecution\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutExecution\Domain\ValueObjects\ExerciseSnapshot;
-use App\WorkoutExecution\Domain\ValueObjects\PlannedPrescription;
-use App\WorkoutExecution\Domain\ValueObjects\Repetitions;
-use App\WorkoutExecution\Domain\ValueObjects\SetsCount;
-use App\WorkoutExecution\Domain\ValueObjects\WorkingWeight;
+use Tests\Support\WorkoutExecution\WorkoutSessionFixture;
 
 $workoutExercise = static fn (int $exerciseId, int $position): WorkoutExercise => WorkoutExercise::fromPlan(
     new ExerciseSnapshot(
@@ -21,7 +18,7 @@ $workoutExercise = static fn (int $exerciseId, int $position): WorkoutExercise =
         new ExerciseName('Упражнение '.$exerciseId),
         new ExercisePosition($position),
     ),
-    new PlannedPrescription(new SetsCount(3), new Repetitions(8), new WorkingWeight(90_000)),
+    WorkoutSessionFixture::sets(),
 );
 
 it('keeps exercises ordered by their planned positions', function () use ($workoutExercise) {

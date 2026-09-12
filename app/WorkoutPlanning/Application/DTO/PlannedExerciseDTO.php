@@ -6,11 +6,10 @@ use App\WorkoutPlanning\Domain\Entities\PlannedExercise;
 
 final readonly class PlannedExerciseDTO
 {
+    /** @param list<PlannedSetDTO> $sets */
     public function __construct(
         public private(set) int $exerciseId,
-        public private(set) int $sets,
-        public private(set) int $repetitionsPerSet,
-        public private(set) int $workingWeightInGrams,
+        public private(set) array $sets,
         public private(set) int $position,
     ) {}
 
@@ -18,9 +17,7 @@ final readonly class PlannedExerciseDTO
     {
         return new self(
             exerciseId: $plannedExercise->exerciseId->value,
-            sets: $plannedExercise->setsCount->value,
-            repetitionsPerSet: $plannedExercise->repetitionsPerSet->value,
-            workingWeightInGrams: $plannedExercise->workingWeight->grams,
+            sets: array_map(PlannedSetDTO::fromDomain(...), $plannedExercise->plannedSets()),
             position: $plannedExercise->position->value,
         );
     }
