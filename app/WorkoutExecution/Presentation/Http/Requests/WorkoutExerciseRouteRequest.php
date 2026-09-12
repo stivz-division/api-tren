@@ -9,6 +9,7 @@ abstract class WorkoutExerciseRouteRequest extends WorkoutSessionRouteRequest
     {
         return [
             ...parent::rules(),
+            /** @ignoreParam */
             'exercise_id' => ['required', 'integer', 'min:1'],
         ];
     }

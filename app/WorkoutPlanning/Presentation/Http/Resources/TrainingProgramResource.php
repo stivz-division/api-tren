@@ -6,6 +6,7 @@ use App\WorkoutPlanning\Application\DTO\TrainingProgramDTO;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
+/** @property-read TrainingProgramDTO $resource */
 final class TrainingProgramResource extends JsonResource
 {
     /** @return array<string, mixed> */

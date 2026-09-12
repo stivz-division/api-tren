@@ -22,6 +22,7 @@ final class UpdateTrainingProgramRequest extends FormRequest
     public function rules(): array
     {
         return [
+            /** @ignoreParam */
             'weekday' => ['prohibited'],
             'name' => ['required', 'string', 'max:255'],
             'exercises' => ['required', 'array', 'list', 'min:1'],

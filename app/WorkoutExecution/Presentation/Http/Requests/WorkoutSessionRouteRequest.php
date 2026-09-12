@@ -8,6 +8,7 @@ abstract class WorkoutSessionRouteRequest extends AuthenticatedWorkoutRequest
     public function rules(): array
     {
         return [
+            /** @ignoreParam */
             'workout_session_id' => ['required', 'integer', 'min:1'],
         ];
     }

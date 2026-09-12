@@ -18,6 +18,7 @@ final class GetTrainingProgramForWeekdayRequest extends FormRequest
     public function rules(): array
     {
         return [
+            /** @ignoreParam */
             'weekday' => ['required', 'integer', 'between:1,7'],
         ];
     }

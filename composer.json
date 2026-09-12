@@ -15,6 +15,7 @@
         "laravel/tinker": "^3.0"
     },
     "require-dev": {
+        "dedoc/scramble": "^0.13.43",
         "fakerphp/faker": "^1.23",
         "larastan/larastan": "^3.11",
         "laravel/boost": "^2.2",
@@ -54,6 +55,11 @@
         "test": [
             "@php artisan config:clear --ansi @no_additional_args",
             "@php artisan test"
+        ],
+        "openapi:generate": "@php artisan scramble:export --path=openapi.json",
+        "openapi:check": [
+            "@openapi:generate",
+            "git diff --exit-code -- openapi.json"
         ],
         "analyse": "phpstan analyse --memory-limit=1G",
         "post-autoload-dump": [

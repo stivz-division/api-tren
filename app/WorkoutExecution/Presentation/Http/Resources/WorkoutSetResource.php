@@ -7,6 +7,7 @@ use App\WorkoutExecution\Presentation\Http\Support\WorkingWeightConverter;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
+/** @property-read WorkoutSetDTO $resource */
 final class WorkoutSetResource extends JsonResource
 {
     /** @return array{position: int, repetitions: int, working_weight_kg: int|float} */

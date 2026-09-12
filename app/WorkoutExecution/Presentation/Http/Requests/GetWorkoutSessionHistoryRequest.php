@@ -13,6 +13,7 @@ final class GetWorkoutSessionHistoryRequest extends AuthenticatedWorkoutRequest
     public function rules(): array
     {
         return [
+            /** @default 15 */
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:50'],
             'cursor' => [
                 'sometimes',

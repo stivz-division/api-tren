@@ -6,6 +6,7 @@ use App\WorkoutExecution\Application\DTO\WorkoutExerciseDTO;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
+/** @property-read WorkoutExerciseDTO $resource */
 final class WorkoutExerciseResource extends JsonResource
 {
     /** @return array<string, mixed> */
@@ -18,6 +19,7 @@ final class WorkoutExerciseResource extends JsonResource
             'exercise_id' => $exercise->exerciseId,
             'name' => $exercise->name,
             'position' => $exercise->position,
+            /** @var 'pending'|'completed'|'skipped' */
             'status' => $exercise->status,
             'planned_sets' => WorkoutSetResource::collection($exercise->plannedSets),
             'sets' => WorkoutSetResource::collection($exercise->sets),
