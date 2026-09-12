@@ -4,10 +4,12 @@ namespace App\WorkoutExecution\Infrastructure\Providers;
 
 use App\WorkoutExecution\Application\Gateways\TrainingProgramSnapshotProvider;
 use App\WorkoutExecution\Application\Gateways\WorkoutClock;
+use App\WorkoutExecution\Application\Gateways\WorkoutSessionHistoryProvider;
 use App\WorkoutExecution\Application\Gateways\WorkoutSessionMutationLock;
 use App\WorkoutExecution\Domain\Repositories\WorkoutSessionRepository;
 use App\WorkoutExecution\Infrastructure\Integrations\WorkoutPlanning\EloquentTrainingProgramSnapshotProvider;
 use App\WorkoutExecution\Infrastructure\Locks\RedisWorkoutSessionMutationLock;
+use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Gateways\EloquentWorkoutSessionHistoryProvider;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Repositories\EloquentWorkoutSessionRepository;
 use App\WorkoutExecution\Infrastructure\Time\MoscowWorkoutClock;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
@@ -27,6 +29,10 @@ final class WorkoutExecutionServiceProvider extends ServiceProvider
         $this->app->bind(
             TrainingProgramSnapshotProvider::class,
             EloquentTrainingProgramSnapshotProvider::class,
+        );
+        $this->app->bind(
+            WorkoutSessionHistoryProvider::class,
+            EloquentWorkoutSessionHistoryProvider::class,
         );
         $this->app->singleton(WorkoutClock::class, MoscowWorkoutClock::class);
         $this->app->singleton(

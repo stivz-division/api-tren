@@ -4,6 +4,7 @@ use App\WorkoutExecution\Presentation\Http\Controllers\CancelWorkoutSessionContr
 use App\WorkoutExecution\Presentation\Http\Controllers\CompleteExerciseController;
 use App\WorkoutExecution\Presentation\Http\Controllers\CompleteWorkoutSessionController;
 use App\WorkoutExecution\Presentation\Http\Controllers\GetActiveWorkoutSessionController;
+use App\WorkoutExecution\Presentation\Http\Controllers\GetWorkoutSessionHistoryController;
 use App\WorkoutExecution\Presentation\Http\Controllers\ReopenExerciseController;
 use App\WorkoutExecution\Presentation\Http\Controllers\SaveExerciseProgressController;
 use App\WorkoutExecution\Presentation\Http\Controllers\SkipExerciseController;
@@ -11,6 +12,8 @@ use App\WorkoutExecution\Presentation\Http\Controllers\StartWorkoutSessionContro
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth:sanctum')->group(function (): void {
+    Route::get('workout-sessions', GetWorkoutSessionHistoryController::class)
+        ->name('api.workout-sessions.index');
     Route::get('workout-sessions/active', GetActiveWorkoutSessionController::class)
         ->name('api.workout-sessions.active.show');
     Route::put('workout-sessions/active', StartWorkoutSessionController::class)
