@@ -9,6 +9,7 @@
 /.claude/
 /.cursor/
 /.idea
+/.worktrees
 /.nova
 /.phpunit.cache
 /.vscode
