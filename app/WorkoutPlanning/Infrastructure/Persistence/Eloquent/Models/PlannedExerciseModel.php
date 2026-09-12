@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $repetitions_per_set
  * @property int $working_weight_grams
  * @property int $position
+ * @property-read Exercise $exercise
  */
 #[Fillable([
     'exercise_id',

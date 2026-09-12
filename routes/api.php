@@ -12,3 +12,4 @@ Route::post('auth', AuthController::class)
     ->name('api.auth');
 
 require base_path('app/WorkoutPlanning/Presentation/Routes/api.php');
+require base_path('app/WorkoutExecution/Presentation/Routes/api.php');
