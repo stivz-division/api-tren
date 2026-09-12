@@ -30,11 +30,100 @@ it('returns 401 for every training program endpoint without a token', function (
 ): void {
     $this->json($method, $uri)->assertUnauthorized();
 })->with([
+    'index' => ['GET', '/api/training-programs'],
     'store' => ['POST', '/api/training-programs'],
     'update' => ['PUT', '/api/training-programs/1'],
     'delete' => ['DELETE', '/api/training-programs/1'],
     'get by weekday' => ['GET', '/api/training-programs/weekdays/1'],
 ]);
+
+it('returns all authenticated user programs in weekday order with complete details', function () use ($sets): void {
+    $owner = User::factory()->create();
+    $otherUser = User::factory()->create();
+    $mondayExercise = Exercise::factory()->create();
+    $tuesdayExercise = Exercise::factory()->create();
+    Sanctum::actingAs($owner);
+    $tuesdayProgramId = expect($this->postJson('/api/training-programs', [
+        'weekday' => 2,
+        'name' => 'Вторник',
+        'exercises' => [[
+            'exercise_id' => $tuesdayExercise->id,
+            'sets' => $sets(2, 8, 75.5),
+        ]],
+    ])->assertCreated()->json('data.id'))->toBeInt()->value;
+    $mondayProgramId = expect($this->postJson('/api/training-programs', [
+        'weekday' => 1,
+        'name' => 'Понедельник',
+        'exercises' => [[
+            'exercise_id' => $mondayExercise->id,
+            'sets' => $sets(1, 6, 100),
+        ]],
+    ])->assertCreated()->json('data.id'))->toBeInt()->value;
+    Sanctum::actingAs($otherUser);
+    $this->postJson('/api/training-programs', [
+        'weekday' => 3,
+        'name' => 'Чужая программа',
+        'exercises' => [[
+            'exercise_id' => $mondayExercise->id,
+            'sets' => $sets(1, 5, 50),
+        ]],
+    ])->assertCreated();
+    Sanctum::actingAs($owner);
+
+    $response = $this->getJson('/api/training-programs');
+
+    $response
+        ->assertOk()
+        ->assertExactJson([
+            'data' => [
+                [
+                    'id' => $mondayProgramId,
+                    'weekday' => 1,
+                    'name' => 'Понедельник',
+                    'exercises' => [[
+                        'exercise_id' => $mondayExercise->id,
+                        'position' => 1,
+                        'sets' => [[
+                            'position' => 1,
+                            'repetitions' => 6,
+                            'working_weight_kg' => 100,
+                        ]],
+                    ]],
+                ],
+                [
+                    'id' => $tuesdayProgramId,
+                    'weekday' => 2,
+                    'name' => 'Вторник',
+                    'exercises' => [[
+                        'exercise_id' => $tuesdayExercise->id,
+                        'position' => 1,
+                        'sets' => [
+                            [
+                                'position' => 1,
+                                'repetitions' => 8,
+                                'working_weight_kg' => 75.5,
+                            ],
+                            [
+                                'position' => 2,
+                                'repetitions' => 8,
+                                'working_weight_kg' => 75.5,
+                            ],
+                        ],
+                    ]],
+                ],
+            ],
+        ]);
+});
+
+it('returns an empty list when the authenticated user has no programs', function (): void {
+    Sanctum::actingAs(User::factory()->create());
+
+    $response = $this->getJson('/api/training-programs');
+
+    $response
+        ->assertOk()
+        ->assertExactJson(['data' => []]);
+});
 
 it('creates a program with ordered individual planned sets', function (): void {
     $user = User::factory()->create();

@@ -24,6 +24,17 @@ final readonly class EloquentTrainingProgramRepository implements TrainingProgra
         private DatabaseManager $database,
     ) {}
 
+    public function findAllForUser(UserId $userId): array
+    {
+        return array_values($this->queryWithExercises()
+            ->where('user_id', $userId->value)
+            ->orderBy('weekday')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (TrainingProgramModel $model): TrainingProgram => $this->mapper->toDomain($model))
+            ->all());
+    }
+
     public function findForUser(TrainingProgramId $id, UserId $userId): ?TrainingProgram
     {
         $model = $this->queryWithExercises()

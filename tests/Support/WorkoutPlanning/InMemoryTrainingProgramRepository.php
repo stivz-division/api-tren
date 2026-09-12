@@ -61,6 +61,24 @@ final class InMemoryTrainingProgramRepository implements TrainingProgramReposito
         return $trainingProgram === null ? null : $this->copy($trainingProgram);
     }
 
+    public function findAllForUser(UserId $userId): array
+    {
+        $trainingPrograms = array_values(array_filter(
+            $this->trainingPrograms,
+            static fn (TrainingProgram $trainingProgram): bool => $trainingProgram->userId->equals($userId),
+        ));
+
+        usort(
+            $trainingPrograms,
+            static fn (TrainingProgram $left, TrainingProgram $right): int => $left->weekday->value <=> $right->weekday->value,
+        );
+
+        return array_map(
+            fn (TrainingProgram $trainingProgram): TrainingProgram => $this->copy($trainingProgram),
+            $trainingPrograms,
+        );
+    }
+
     public function findForUser(TrainingProgramId $id, UserId $userId): ?TrainingProgram
     {
         $trainingProgram = $this->find($id);

@@ -106,6 +106,45 @@ it('persists and rehydrates the complete aggregate', function () use ($repositor
     ]);
 });
 
+it('returns only owned aggregates in weekday order with nested relations loaded', function () use ($repository, $plannedExercise): void {
+    $owner = User::factory()->create();
+    $otherUser = User::factory()->create();
+    $exercise = Exercise::factory()->create();
+    $trainingPrograms = $repository();
+    $trainingPrograms->add(TrainingProgram::create(
+        new UserId($owner->id),
+        Weekday::Tuesday,
+        new PlannedExerciseCollection($plannedExercise($exercise, 2, 8, 75_500, 1)),
+        new ProgramName('Вторник'),
+    ));
+    $trainingPrograms->add(TrainingProgram::create(
+        new UserId($otherUser->id),
+        Weekday::Monday,
+        new PlannedExerciseCollection($plannedExercise($exercise, 1, 5, 50_000, 1)),
+        new ProgramName('Чужая программа'),
+    ));
+    $trainingPrograms->add(TrainingProgram::create(
+        new UserId($owner->id),
+        Weekday::Monday,
+        new PlannedExerciseCollection($plannedExercise($exercise, 1, 6, 100_000, 1)),
+        new ProgramName('Понедельник'),
+    ));
+
+    $result = $trainingPrograms->findAllForUser(new UserId($owner->id));
+
+    expect(array_map(
+        static fn (TrainingProgram $program): array => [
+            $program->weekday->value,
+            $program->name->value,
+            count($program->plannedExercises()[0]->plannedSets()),
+        ],
+        $result,
+    ))->toBe([
+        [1, 'Понедельник', 1],
+        [2, 'Вторник', 2],
+    ]);
+});
+
 it('rejects a second active program for the same user and weekday atomically', function () use ($repository, $plannedExercise): void {
     $user = User::factory()->create();
     $exercise = Exercise::factory()->create();

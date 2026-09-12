@@ -11,6 +11,9 @@ use LogicException;
 
 interface TrainingProgramRepository
 {
+    /** @return list<TrainingProgram> */
+    public function findAllForUser(UserId $userId): array;
+
     public function findForUser(TrainingProgramId $id, UserId $userId): ?TrainingProgram;
 
     public function findForUserOnWeekday(UserId $userId, Weekday $weekday): ?TrainingProgram;
