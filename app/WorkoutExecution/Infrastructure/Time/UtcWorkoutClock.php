@@ -6,10 +6,10 @@ use App\WorkoutExecution\Application\Gateways\WorkoutClock;
 use DateTimeImmutable;
 use DateTimeZone;
 
-final readonly class MoscowWorkoutClock implements WorkoutClock
+final readonly class UtcWorkoutClock implements WorkoutClock
 {
     public function now(): DateTimeImmutable
     {
-        return new DateTimeImmutable('now', new DateTimeZone('Europe/Moscow'));
+        return new DateTimeImmutable('now', new DateTimeZone('UTC'));
     }
 }

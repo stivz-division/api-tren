@@ -113,15 +113,15 @@ final readonly class WorkoutSessionMapper
                 ...array_slice($exercises, 1),
             ),
             WorkoutSessionStatus::from($model->status),
-            $this->toMoscowTime($model->started_at),
-            $model->completed_at === null ? null : $this->toMoscowTime($model->completed_at),
-            $model->cancelled_at === null ? null : $this->toMoscowTime($model->cancelled_at),
+            $this->toUtc($model->started_at),
+            $model->completed_at === null ? null : $this->toUtc($model->completed_at),
+            $model->cancelled_at === null ? null : $this->toUtc($model->cancelled_at),
         );
     }
 
-    private function toMoscowTime(CarbonImmutable $date): DateTimeImmutable
+    private function toUtc(CarbonImmutable $date): DateTimeImmutable
     {
         return DateTimeImmutable::createFromInterface($date)
-            ->setTimezone(new DateTimeZone('Europe/Moscow'));
+            ->setTimezone(new DateTimeZone('UTC'));
     }
 }

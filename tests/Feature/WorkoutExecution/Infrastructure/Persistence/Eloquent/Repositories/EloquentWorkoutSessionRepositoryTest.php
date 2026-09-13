@@ -101,8 +101,8 @@ it('persists and rehydrates the complete workout aggregate', function () use ($r
 
     $rehydrated = $workoutSessions->findForUser($id, new UserId($user->id));
 
-    expect($rehydrated?->startedAt->getTimezone()->getName())->toBe('Europe/Moscow');
-    expect($rehydrated?->startedAt->format('Y-m-d H:i:s'))->toBe('2026-09-15 19:00:00');
+    expect($rehydrated?->startedAt->getTimezone()->getName())->toBe('UTC');
+    expect($rehydrated?->startedAt->format('Y-m-d H:i:s'))->toBe('2026-09-15 16:00:00');
     expect($rehydrated?->workoutExercises())->toHaveCount(2);
     expect($rehydrated?->workoutExercises()[0]->workoutSets())->toHaveCount(3);
 });

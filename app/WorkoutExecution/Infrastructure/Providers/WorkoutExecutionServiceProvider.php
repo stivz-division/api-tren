@@ -11,7 +11,7 @@ use App\WorkoutExecution\Infrastructure\Integrations\WorkoutPlanning\EloquentTra
 use App\WorkoutExecution\Infrastructure\Locks\RedisWorkoutSessionMutationLock;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Gateways\EloquentWorkoutSessionHistoryProvider;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Repositories\EloquentWorkoutSessionRepository;
-use App\WorkoutExecution\Infrastructure\Time\MoscowWorkoutClock;
+use App\WorkoutExecution\Infrastructure\Time\UtcWorkoutClock;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Foundation\Application;
@@ -34,7 +34,7 @@ final class WorkoutExecutionServiceProvider extends ServiceProvider
             WorkoutSessionHistoryProvider::class,
             EloquentWorkoutSessionHistoryProvider::class,
         );
-        $this->app->singleton(WorkoutClock::class, MoscowWorkoutClock::class);
+        $this->app->singleton(WorkoutClock::class, UtcWorkoutClock::class);
         $this->app->singleton(
             WorkoutSessionMutationLock::class,
             static function (Application $application): RedisWorkoutSessionMutationLock {

@@ -22,8 +22,8 @@ beforeEach(function (): void {
     $this->app->instance(
         WorkoutClock::class,
         new FrozenWorkoutClock(new DateTimeImmutable(
-            '2026-09-15 19:00:00',
-            new DateTimeZone('Europe/Moscow'),
+            '2026-09-15 16:00:00',
+            new DateTimeZone('UTC'),
         )),
     );
 });
@@ -101,7 +101,7 @@ it('starts a session with immutable planned sets and matching actual sets', func
         ->assertJsonPath('data.program_name', 'Грудь и трицепс')
         ->assertJsonPath('data.scheduled_weekday', 1)
         ->assertJsonPath('data.status', 'in_progress')
-        ->assertJsonPath('data.started_at', '2026-09-15T19:00:00+03:00')
+        ->assertJsonPath('data.started_at', '2026-09-15T16:00:00+00:00')
         ->assertJsonPath('data.completed_at', null)
         ->assertJsonPath('data.cancelled_at', null)
         ->assertJsonPath('data.exercises.0.exercise_id', $benchPress->id)
@@ -261,17 +261,17 @@ it('completes a resolved session idempotently and preserves its first completion
 
     $this->postJson("/api/workout-sessions/{$sessionId}/complete")
         ->assertOk()
-        ->assertJsonPath('data.completed_at', '2026-09-15T19:00:00+03:00');
+        ->assertJsonPath('data.completed_at', '2026-09-15T16:00:00+00:00');
     $this->app->instance(
         WorkoutClock::class,
         new FrozenWorkoutClock(new DateTimeImmutable(
-            '2026-09-15 20:00:00',
-            new DateTimeZone('Europe/Moscow'),
+            '2026-09-15 17:00:00',
+            new DateTimeZone('UTC'),
         )),
     );
     $this->postJson("/api/workout-sessions/{$sessionId}/complete")
         ->assertOk()
-        ->assertJsonPath('data.completed_at', '2026-09-15T19:00:00+03:00');
+        ->assertJsonPath('data.completed_at', '2026-09-15T16:00:00+00:00');
     $this->getJson('/api/workout-sessions/active')
         ->assertOk()
         ->assertExactJson(['data' => null]);
@@ -305,7 +305,7 @@ it('cancels a session idempotently and permits starting another program', functi
     $this->postJson("/api/workout-sessions/{$sessionId}/cancel")
         ->assertOk()
         ->assertJsonPath('data.status', 'cancelled')
-        ->assertJsonPath('data.cancelled_at', '2026-09-15T19:00:00+03:00');
+        ->assertJsonPath('data.cancelled_at', '2026-09-15T16:00:00+00:00');
     $this->postJson("/api/workout-sessions/{$sessionId}/cancel")->assertOk();
     $this->putJson('/api/workout-sessions/active', [
         'training_program_id' => $secondProgram->id,

@@ -7,7 +7,7 @@ use App\WorkoutExecution\Domain\Repositories\WorkoutSessionRepository;
 use App\WorkoutExecution\Infrastructure\Integrations\WorkoutPlanning\EloquentTrainingProgramSnapshotProvider;
 use App\WorkoutExecution\Infrastructure\Locks\RedisWorkoutSessionMutationLock;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Repositories\EloquentWorkoutSessionRepository;
-use App\WorkoutExecution\Infrastructure\Time\MoscowWorkoutClock;
+use App\WorkoutExecution\Infrastructure\Time\UtcWorkoutClock;
 
 it('binds workout execution ports to infrastructure adapters', function (): void {
     config()->set('workout-execution.mutation_lock.store', 'array');
@@ -20,7 +20,7 @@ it('binds workout execution ports to infrastructure adapters', function (): void
     ])->toBe([
         EloquentWorkoutSessionRepository::class,
         EloquentTrainingProgramSnapshotProvider::class,
-        MoscowWorkoutClock::class,
+        UtcWorkoutClock::class,
         RedisWorkoutSessionMutationLock::class,
     ]);
 });

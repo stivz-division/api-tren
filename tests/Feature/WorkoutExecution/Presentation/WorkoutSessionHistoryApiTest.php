@@ -75,7 +75,8 @@ it('returns only the authenticated user terminal sessions newest first across cu
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.id', $completedSession->id)
         ->assertJsonPath('data.0.status', 'completed')
-        ->assertJsonPath('data.0.started_at', '2026-09-13T12:00:00+03:00')
+        ->assertJsonPath('data.0.completed_at', '2026-09-13T10:00:00+00:00')
+        ->assertJsonPath('data.0.started_at', '2026-09-13T09:00:00+00:00')
         ->assertJsonPath('data.0.exercises.0.name', 'Жим лежа')
         ->assertJsonPath('data.0.exercises.0.sets.0.working_weight_kg', 92.5)
         ->assertJsonPath('meta.per_page', 1)
@@ -91,6 +92,7 @@ it('returns only the authenticated user terminal sessions newest first across cu
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.id', $cancelledSession->id)
         ->assertJsonPath('data.0.status', 'cancelled')
+        ->assertJsonPath('data.0.cancelled_at', '2026-09-12T10:00:00+00:00')
         ->assertJsonPath('meta.next_cursor', null)
         ->assertJsonPath('links.next', null);
     $previousCursor = expect($secondPage->json('meta.prev_cursor'))->toBeString()->value;
