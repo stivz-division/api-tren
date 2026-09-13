@@ -7,6 +7,7 @@ $openApiHttpMethods = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head
 
 $expectedOpenApiOperations = [
     'DELETE /training-programs/{trainingProgramId}',
+    'GET /exercises',
     'GET /training-programs',
     'GET /training-programs/weekdays/{weekday}',
     'GET /workout-sessions',
@@ -384,6 +385,7 @@ it('documents route parameters without internal request fields', function () use
         'PUT /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/sets' => ['workoutSessionId', 'exerciseId'],
     ];
     $operationsWithoutRequestBodies = [
+        'GET /exercises',
         'GET /training-programs',
         'DELETE /training-programs/{trainingProgramId}',
         'GET /training-programs/weekdays/{weekday}',
@@ -442,6 +444,7 @@ it('documents success resources and API error responses', function () use (
 ): void {
     $expectedResponseStatuses = [
         'POST /auth' => ['200', '401', '429'],
+        'GET /exercises' => ['200', '401'],
         'GET /training-programs' => ['200', '401'],
         'POST /training-programs' => ['201', '401', '409', '422'],
         'PUT /training-programs/{trainingProgramId}' => ['200', '401', '404', '409', '422'],
@@ -479,6 +482,18 @@ it('documents success resources and API error responses', function () use (
         );
         $this->assertSame(['token', 'token_type'], $openApiArrayAt($authSchema, ['required']));
         $this->assertSame('Bearer', $openApiStringAt($authSchema, ['properties', 'token_type', 'const']));
+
+        $exerciseListSchema = $openApiResponseSchema(
+            $document,
+            $openApiOperation($document, 'GET', '/exercises'),
+            '200',
+        );
+        $exerciseSchema = $resolveOpenApiReference(
+            $document,
+            $openApiArrayAt($exerciseListSchema, ['properties', 'data', 'items']),
+        );
+        $this->assertSame(['id', 'code', 'name'], array_keys($openApiArrayAt($exerciseSchema, ['properties'])));
+        $this->assertSame(['id', 'code', 'name'], $openApiArrayAt($exerciseSchema, ['required']));
 
         $integerResourceProperties = [
             'TrainingProgramResource' => ['id', 'weekday'],

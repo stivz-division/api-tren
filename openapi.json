@@ -571,6 +571,56 @@
                 }
             }
         },
+        "/exercises": {
+            "get": {
+                "operationId": "exercises.index",
+                "tags": [
+                    "Exercise"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "integer"
+                                                    },
+                                                    "code": {
+                                                        "type": "string"
+                                                    },
+                                                    "name": {
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "id",
+                                                    "code",
+                                                    "name"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    }
+                }
+            }
+        },
         "/workout-sessions/active": {
             "get": {
                 "operationId": "workout-sessions.active.show",
@@ -1349,6 +1399,46 @@
                     "sets"
                 ],
                 "title": "CompleteExerciseRequest"
+            },
+            "Exercise": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "discipline_id": {
+                        "type": "integer"
+                    },
+                    "code": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "created_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "updated_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    }
+                },
+                "required": [
+                    "id",
+                    "discipline_id",
+                    "code",
+                    "name",
+                    "created_at",
+                    "updated_at"
+                ],
+                "title": "Exercise"
             },
             "PlannedExerciseResource": {
                 "type": "object",
