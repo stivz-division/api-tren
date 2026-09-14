@@ -80,6 +80,74 @@
         {
             "code": "seated-leg-curl",
             "name": "Сгибания ног сидя"
+        },
+        {
+            "code": "seated-dumbbell-shoulder-press",
+            "name": "Жим гантелей сидя"
+        },
+        {
+            "code": "abs",
+            "name": "Пресс"
+        },
+        {
+            "code": "machine-calf-raise",
+            "name": "Икры в тренажере"
+        },
+        {
+            "code": "dumbbell-shrug",
+            "name": "Шраги с гантелями"
+        },
+        {
+            "code": "reverse-pec-deck",
+            "name": "Отведение в Пек-Деке"
+        },
+        {
+            "code": "single-arm-hammer-row",
+            "name": "Тяга хаммера по одной руке"
+        },
+        {
+            "code": "horizontal-hammer-row",
+            "name": "Тяга горизонтального хаммера"
+        },
+        {
+            "code": "lying-leg-curl",
+            "name": "Сгибание ног лёжа"
+        },
+        {
+            "code": "barbell-glute-bridge",
+            "name": "Ягодичный мостик со штангой"
+        },
+        {
+            "code": "leg-extension",
+            "name": "Разгибание ног"
+        },
+        {
+            "code": "single-arm-cable-triceps-pushdown",
+            "name": "Разгибания на трицепс по 1 руке с верхнего кроссовера"
+        },
+        {
+            "code": "diamond-push-up",
+            "name": "Бриллиантовые отжимания на трицепс"
+        },
+        {
+            "code": "straight-bar-triceps-pushdown",
+            "name": "Разгибания с верхнего кроссовера на трицепс с прямой рукояткой"
+        },
+        {
+            "code": "barbell-squat",
+            "name": "Приседания со штангой"
+        },
+        {
+            "code": "conventional-deadlift",
+            "name": "Классическая становая тяга"
+        },
+        {
+            "code": "sumo-deadlift",
+            "name": "Становая тяга сумо"
+        },
+        {
+            "code": "stiff-leg-deadlift",
+            "name": "Мертвая тяга"
         }
     ]
 }
