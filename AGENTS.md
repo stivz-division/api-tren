@@ -158,3 +158,12 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - After the feature tests pass, ask the user to run the complete suite with `php artisan test --compact`.
 
 </laravel-boost-guidelines>
+
+## Documentation
+
+| Document | Path | Description |
+| --- | --- | --- |
+| README | README.md | Обзор API и запуск фонового анализа |
+| Расписание | docs/training-schedule.md | Программы, упражнения и план нагрузки |
+| Тренировочная сессия | docs/workout-session.md | Запись факта и завершение тренировки |
+| Анализ тренировки | docs/workout-analysis.md | Расчёты и примеры для клиента |

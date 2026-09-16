@@ -17,7 +17,6 @@ use App\WorkoutAnalysis\Infrastructure\Transactions\DatabaseAnalysisTransaction;
 use App\WorkoutAnalysis\Presentation\Console\RecoverWorkoutAnalysisCommand;
 use App\WorkoutAnalysis\Presentation\Console\RetryWorkoutDeviationAnalysisCommand;
 use App\WorkoutExecution\Application\Gateways\WorkoutCompletionNotifier;
-use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\ServiceProvider;
 
 final class WorkoutAnalysisServiceProvider extends ServiceProvider
@@ -48,8 +47,5 @@ final class WorkoutAnalysisServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([RecoverWorkoutAnalysisCommand::class, RetryWorkoutDeviationAnalysisCommand::class]);
         }
-        $this->callAfterResolving(Schedule::class, static function (Schedule $schedule): void {
-            $schedule->command('workout-analysis:recover')->everyMinute()->withoutOverlapping(10)->onOneServer();
-        });
     }
 }

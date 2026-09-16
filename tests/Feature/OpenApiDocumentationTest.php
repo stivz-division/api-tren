@@ -12,6 +12,7 @@ $expectedOpenApiOperations = [
     'GET /training-programs/weekdays/{weekday}',
     'GET /workout-sessions',
     'GET /workout-sessions/active',
+    'GET /workout-sessions/{workoutSessionId}/analysis',
     'POST /auth',
     'POST /training-programs',
     'POST /workout-sessions/{workoutSessionId}/cancel',
@@ -374,6 +375,7 @@ it('documents route parameters without internal request fields', function () use
     $openApiStringAt,
 ): void {
     $operationsWithPathParameters = [
+        'GET /workout-sessions/{workoutSessionId}/analysis' => ['workoutSessionId'],
         'DELETE /training-programs/{trainingProgramId}' => ['trainingProgramId'],
         'PUT /training-programs/{trainingProgramId}' => ['trainingProgramId'],
         'GET /training-programs/weekdays/{weekday}' => ['weekday'],
@@ -391,6 +393,7 @@ it('documents route parameters without internal request fields', function () use
         'GET /training-programs/weekdays/{weekday}',
         'GET /workout-sessions',
         'GET /workout-sessions/active',
+        'GET /workout-sessions/{workoutSessionId}/analysis',
         'POST /workout-sessions/{workoutSessionId}/cancel',
         'POST /workout-sessions/{workoutSessionId}/complete',
         'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/reopen',
@@ -452,6 +455,7 @@ it('documents success resources and API error responses', function () use (
         'GET /training-programs/weekdays/{weekday}' => ['200', '401', '404', '422'],
         'GET /workout-sessions' => ['200', '401', '422'],
         'GET /workout-sessions/active' => ['200', '401'],
+        'GET /workout-sessions/{workoutSessionId}/analysis' => ['200', '401', '404', '422'],
         'PUT /workout-sessions/active' => ['200', '401', '404', '409', '422'],
         'PUT /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/sets' => ['200', '401', '404', '409', '422'],
         'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/complete' => ['200', '401', '404', '409', '422'],
@@ -496,6 +500,11 @@ it('documents success resources and API error responses', function () use (
         $this->assertSame(['id', 'code', 'name'], $openApiArrayAt($exerciseSchema, ['required']));
 
         $integerResourceProperties = [
+            'WorkoutAnalysisResource' => ['id', 'workout_session_id'],
+            'WorkoutDeviationResultResource' => ['training_program_id', 'completed_exercises', 'skipped_exercises'],
+            'ExerciseDeviationResource' => ['exercise_id', 'position'],
+            'AnalysisSetResource' => ['position', 'repetitions'],
+            'CountDeviationResource' => ['planned', 'actual', 'difference'],
             'TrainingProgramResource' => ['id', 'weekday'],
             'PlannedExerciseResource' => ['exercise_id', 'position'],
             'PlannedSetResource' => ['position', 'repetitions'],
@@ -520,6 +529,42 @@ it('documents success resources and API error responses', function () use (
                     $document,
                     ['components', 'schemas', 'WorkoutSessionResource', 'properties', $property, 'format'],
                 ),
+            );
+        }
+
+        $this->assertSame(
+            ['id', 'workout_session_id', 'status', 'failure_code', 'result'],
+            array_keys($openApiArrayAt($document, ['components', 'schemas', 'WorkoutAnalysisResource', 'properties'])),
+        );
+        $this->assertSame(
+            ['pending', 'processing', 'completed', 'failed'],
+            $openApiArrayAt($document, ['components', 'schemas', 'WorkoutAnalysisResource', 'properties', 'status', 'enum']),
+        );
+        $this->assertSame(
+            [
+                ['$ref' => '#/components/schemas/WorkoutDeviationResultResource'],
+                ['type' => 'null'],
+            ],
+            $openApiArrayAt($document, ['components', 'schemas', 'WorkoutAnalysisResource', 'properties', 'result', 'anyOf']),
+        );
+        $this->assertSame(
+            'date-time',
+            $openApiStringAt($document, ['components', 'schemas', 'WorkoutDeviationResultResource', 'properties', 'workout_completed_at', 'format']),
+        );
+        $this->assertSame(
+            'number',
+            $openApiStringAt($document, ['components', 'schemas', 'AnalysisSetResource', 'properties', 'working_weight_kg', 'type']),
+        );
+        foreach (['planned', 'actual', 'difference'] as $property) {
+            $this->assertSame(
+                'number',
+                $openApiStringAt($document, ['components', 'schemas', 'KilogramDeviationResource', 'properties', $property, 'type']),
+            );
+        }
+        foreach (['CountDeviationResource', 'KilogramDeviationResource'] as $schemaName) {
+            $this->assertSame(
+                ['number', 'null'],
+                $openApiArrayAt($document, ['components', 'schemas', $schemaName, 'properties', 'percentage', 'type']),
             );
         }
 

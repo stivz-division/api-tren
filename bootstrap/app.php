@@ -1,5 +1,6 @@
 <?php
 
+use App\WorkoutAnalysis\Application\Exceptions\WorkoutAnalysisNotFound;
 use App\WorkoutExecution\Application\Exceptions\InvalidTrainingProgramSnapshot;
 use App\WorkoutExecution\Application\Exceptions\TrainingProgramNotFound as ExecutionTrainingProgramNotFound;
 use App\WorkoutExecution\Application\Exceptions\WorkoutSessionMutationInProgress;
@@ -35,6 +36,13 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
+        );
+
+        $exceptions->render(
+            fn (WorkoutAnalysisNotFound $exception): JsonResponse => response()->json([
+                'code' => 'workout_analysis_not_found',
+                'message' => 'Анализ тренировки не найден.',
+            ], Response::HTTP_NOT_FOUND),
         );
 
         $exceptions->render(

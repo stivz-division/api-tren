@@ -18,3 +18,4 @@ Route::get('exercises', ExerciseController::class)
 
 require base_path('app/WorkoutPlanning/Presentation/Routes/api.php');
 require base_path('app/WorkoutExecution/Presentation/Routes/api.php');
+require base_path('app/WorkoutAnalysis/Presentation/Routes/api.php');

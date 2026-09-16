@@ -940,6 +940,77 @@
                 }
             }
         },
+        "/workout-sessions/{workoutSessionId}/analysis": {
+            "get": {
+                "operationId": "workout-sessions.analysis.show",
+                "summary": "\u041f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u0441\u0442\u0430\u0442\u0443\u0441 \u0438 \u0441\u043e\u0445\u0440\u0430\u043d\u0451\u043d\u043d\u043e\u0435 \u0441\u0440\u0430\u0432\u043d\u0435\u043d\u0438\u0435 \u043f\u043b\u0430\u043d\u0430 \u0438 \u0444\u0430\u043a\u0442\u0430 \u0441\u0432\u043e\u0435\u0439 \u0442\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u043a\u0438",
+                "tags": [
+                    "GetWorkoutSessionAnalysis"
+                ],
+                "parameters": [
+                    {
+                        "name": "workoutSessionId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`WorkoutAnalysisResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/WorkoutAnalysisResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "description": "\u0410\u043d\u0430\u043b\u0438\u0437 \u043e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u0438\u043b\u0438 \u043f\u0440\u0438\u043d\u0430\u0434\u043b\u0435\u0436\u0438\u0442 \u0434\u0440\u0443\u0433\u043e\u043c\u0443 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044e.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "code",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/workout-sessions": {
             "get": {
                 "operationId": "workout-sessions.index",
@@ -1370,6 +1441,26 @@
             }
         },
         "schemas": {
+            "AnalysisSetResource": {
+                "type": "object",
+                "properties": {
+                    "position": {
+                        "type": "integer"
+                    },
+                    "repetitions": {
+                        "type": "integer"
+                    },
+                    "working_weight_kg": {
+                        "type": "number"
+                    }
+                },
+                "required": [
+                    "position",
+                    "repetitions",
+                    "working_weight_kg"
+                ],
+                "title": "AnalysisSetResource"
+            },
             "CompleteExerciseRequest": {
                 "type": "object",
                 "properties": {
@@ -1399,6 +1490,33 @@
                     "sets"
                 ],
                 "title": "CompleteExerciseRequest"
+            },
+            "CountDeviationResource": {
+                "type": "object",
+                "properties": {
+                    "planned": {
+                        "type": "integer"
+                    },
+                    "actual": {
+                        "type": "integer"
+                    },
+                    "difference": {
+                        "type": "integer"
+                    },
+                    "percentage": {
+                        "type": [
+                            "number",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "planned",
+                    "actual",
+                    "difference",
+                    "percentage"
+                ],
+                "title": "CountDeviationResource"
             },
             "Exercise": {
                 "type": "object",
@@ -1439,6 +1557,98 @@
                     "updated_at"
                 ],
                 "title": "Exercise"
+            },
+            "ExerciseDeviationResource": {
+                "type": "object",
+                "properties": {
+                    "exercise_id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "position": {
+                        "type": "integer"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "completed",
+                            "skipped"
+                        ]
+                    },
+                    "planned_sets": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/AnalysisSetResource"
+                        }
+                    },
+                    "actual_sets": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/AnalysisSetResource"
+                        }
+                    },
+                    "set_comparisons": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/SetComparisonResource"
+                        }
+                    },
+                    "sets": {
+                        "$ref": "#/components/schemas/CountDeviationResource"
+                    },
+                    "repetitions": {
+                        "$ref": "#/components/schemas/CountDeviationResource"
+                    },
+                    "volume_kg": {
+                        "$ref": "#/components/schemas/KilogramDeviationResource"
+                    },
+                    "plan_fulfilled": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "exercise_id",
+                    "name",
+                    "position",
+                    "status",
+                    "planned_sets",
+                    "actual_sets",
+                    "set_comparisons",
+                    "sets",
+                    "repetitions",
+                    "volume_kg",
+                    "plan_fulfilled"
+                ],
+                "title": "ExerciseDeviationResource"
+            },
+            "KilogramDeviationResource": {
+                "type": "object",
+                "properties": {
+                    "planned": {
+                        "type": "number"
+                    },
+                    "actual": {
+                        "type": "number"
+                    },
+                    "difference": {
+                        "type": "number"
+                    },
+                    "percentage": {
+                        "type": [
+                            "number",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "planned",
+                    "actual",
+                    "difference",
+                    "percentage"
+                ],
+                "title": "KilogramDeviationResource"
             },
             "PlannedExerciseResource": {
                 "type": "object",
@@ -1512,6 +1722,73 @@
                     "sets"
                 ],
                 "title": "SaveExerciseProgressRequest"
+            },
+            "SetComparisonResource": {
+                "type": "object",
+                "properties": {
+                    "position": {
+                        "type": "integer"
+                    },
+                    "planned": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/AnalysisSetResource"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "actual": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/AnalysisSetResource"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "repetitions": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/CountDeviationResource"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "working_weight_kg": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/KilogramDeviationResource"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "volume_kg": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/KilogramDeviationResource"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "required": [
+                    "position",
+                    "planned",
+                    "actual",
+                    "repetitions",
+                    "working_weight_kg",
+                    "volume_kg"
+                ],
+                "title": "SetComparisonResource"
             },
             "StartWorkoutSessionRequest": {
                 "type": "object",
@@ -1664,6 +1941,106 @@
                     "exercises"
                 ],
                 "title": "UpdateTrainingProgramRequest"
+            },
+            "WorkoutAnalysisResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "workout_session_id": {
+                        "type": "integer"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "pending",
+                            "processing",
+                            "completed",
+                            "failed"
+                        ]
+                    },
+                    "failure_code": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "calculation_failed",
+                            "arithmetic_overflow",
+                            "worker_failed",
+                            "attempt_timed_out",
+                            null
+                        ]
+                    },
+                    "result": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/WorkoutDeviationResultResource"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "required": [
+                    "id",
+                    "workout_session_id",
+                    "status",
+                    "failure_code",
+                    "result"
+                ],
+                "title": "WorkoutAnalysisResource"
+            },
+            "WorkoutDeviationResultResource": {
+                "type": "object",
+                "properties": {
+                    "training_program_id": {
+                        "type": "integer"
+                    },
+                    "program_name": {
+                        "type": "string"
+                    },
+                    "workout_completed_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "completed_exercises": {
+                        "type": "integer"
+                    },
+                    "skipped_exercises": {
+                        "type": "integer"
+                    },
+                    "sets": {
+                        "$ref": "#/components/schemas/CountDeviationResource"
+                    },
+                    "repetitions": {
+                        "$ref": "#/components/schemas/CountDeviationResource"
+                    },
+                    "volume_kg": {
+                        "description": "\u041e\u0431\u044a\u0451\u043c: \u0441\u0443\u043c\u043c\u0430 \u0432\u0435\u0441\u0430 \u0432 \u043a\u0438\u043b\u043e\u0433\u0440\u0430\u043c\u043c\u0430\u0445 \u00d7 \u043f\u043e\u0432\u0442\u043e\u0440\u0435\u043d\u0438\u044f.",
+                        "$ref": "#/components/schemas/KilogramDeviationResource"
+                    },
+                    "exercises": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ExerciseDeviationResource"
+                        }
+                    }
+                },
+                "required": [
+                    "training_program_id",
+                    "program_name",
+                    "workout_completed_at",
+                    "completed_exercises",
+                    "skipped_exercises",
+                    "sets",
+                    "repetitions",
+                    "volume_kg",
+                    "exercises"
+                ],
+                "title": "WorkoutDeviationResultResource"
             },
             "WorkoutExerciseResource": {
                 "type": "object",
