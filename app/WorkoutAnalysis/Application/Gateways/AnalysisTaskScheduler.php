@@ -6,6 +6,6 @@ use App\WorkoutAnalysis\Application\DTO\DeviationTask;
 
 interface AnalysisTaskScheduler
 {
-    /** Отправляет задание после commit, с задержкой до availableAt. Повторная доставка допустима. */
+    /** Отправляет задание после commit; задержка до availableAt применяется только к будущим повторам. Повторная доставка допустима. */
     public function schedule(DeviationTask $task): void;
 }

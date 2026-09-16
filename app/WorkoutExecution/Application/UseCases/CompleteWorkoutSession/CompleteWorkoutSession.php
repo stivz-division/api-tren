@@ -5,7 +5,10 @@ namespace App\WorkoutExecution\Application\UseCases\CompleteWorkoutSession;
 use App\WorkoutExecution\Application\DTO\WorkoutSessionDTO;
 use App\WorkoutExecution\Application\Exceptions\WorkoutSessionNotFound;
 use App\WorkoutExecution\Application\Gateways\WorkoutClock;
+use App\WorkoutExecution\Application\Gateways\WorkoutCompletionNotifier;
+use App\WorkoutExecution\Application\Gateways\WorkoutCompletionTransaction;
 use App\WorkoutExecution\Application\Gateways\WorkoutSessionMutationLock;
+use App\WorkoutExecution\Domain\Enums\WorkoutSessionStatus;
 use App\WorkoutExecution\Domain\Repositories\WorkoutSessionRepository;
 use App\WorkoutExecution\Domain\ValueObjects\UserId;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSessionId;
@@ -16,6 +19,8 @@ final readonly class CompleteWorkoutSession
         private WorkoutSessionRepository $workoutSessions,
         private WorkoutClock $clock,
         private WorkoutSessionMutationLock $mutationLock,
+        private WorkoutCompletionTransaction $transaction,
+        private WorkoutCompletionNotifier $notifier,
     ) {}
 
     public function handle(CompleteWorkoutSessionInput $input): WorkoutSessionDTO
@@ -24,7 +29,7 @@ final readonly class CompleteWorkoutSession
 
         return $this->mutationLock->execute(
             $userId,
-            function () use ($input, $userId): WorkoutSessionDTO {
+            fn (): WorkoutSessionDTO => $this->transaction->execute($userId, function () use ($input, $userId): WorkoutSessionDTO {
                 $session = $this->workoutSessions->findForUser(
                     new WorkoutSessionId($input->workoutSessionId),
                     $userId,
@@ -34,11 +39,16 @@ final readonly class CompleteWorkoutSession
                     throw new WorkoutSessionNotFound;
                 }
 
+                if ($session->status === WorkoutSessionStatus::Completed) {
+                    return WorkoutSessionDTO::fromDomain($session);
+                }
+
                 $session->complete($this->clock->now());
                 $this->workoutSessions->save($session);
+                $this->notifier->completed(new WorkoutSessionId($input->workoutSessionId), $userId);
 
                 return WorkoutSessionDTO::fromDomain($session);
-            },
+            }),
         );
     }
 }

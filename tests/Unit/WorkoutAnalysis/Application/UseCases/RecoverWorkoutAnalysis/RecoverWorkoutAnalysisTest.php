@@ -1,5 +1,6 @@
 <?php
 
+use App\WorkoutAnalysis\Application\Exceptions\WorkoutAnalysisNotFound;
 use App\WorkoutAnalysis\Application\UseCases\CalculateWorkoutDeviations\CalculateWorkoutDeviationsInput;
 use App\WorkoutAnalysis\Application\UseCases\InitializeWorkoutAnalysis\InitializeWorkoutAnalysisInput;
 use App\WorkoutAnalysis\Application\UseCases\RecoverWorkoutAnalysis\RecoverWorkoutAnalysisInput;
@@ -9,14 +10,14 @@ use Tests\Support\WorkoutAnalysis\AnalysisUseCases;
 use Tests\Support\WorkoutAnalysis\InMemoryAnalysisEnvironment;
 use Tests\Support\WorkoutAnalysis\WorkoutAnalysisFixture as Fixture;
 
-it('initializes a missing analysis for a completed workout', function () {
+it('does not initialize a missing analysis during recovery', function () {
     $env = new InMemoryAnalysisEnvironment;
     $app = new AnalysisUseCases($env);
 
-    $dto = $app->recover()->handle(new RecoverWorkoutAnalysisInput(7, 51));
+    expect(fn () => $app->recover()->handle(new RecoverWorkoutAnalysisInput(7, 51)))
+        ->toThrow(WorkoutAnalysisNotFound::class);
 
-    expect($dto->status)->toBe('pending');
-    expect($env->tasks)->toHaveCount(1);
+    expect($env->tasks)->toBe([]);
 });
 
 it('redispatches the same pending attempt after the delivery grace period', function () {

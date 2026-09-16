@@ -9,8 +9,6 @@ use App\WorkoutAnalysis\Application\Gateways\AnalysisClock;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisTaskScheduler;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisTransaction;
 use App\WorkoutAnalysis\Application\Policies\AnalysisExecutionPolicy;
-use App\WorkoutAnalysis\Application\UseCases\InitializeWorkoutAnalysis\InitializeWorkoutAnalysis;
-use App\WorkoutAnalysis\Application\UseCases\InitializeWorkoutAnalysis\InitializeWorkoutAnalysisInput;
 use App\WorkoutAnalysis\Domain\Enums\AnalysisFailureCode;
 use App\WorkoutAnalysis\Domain\Enums\AnalysisStatus;
 use App\WorkoutAnalysis\Domain\Repositories\WorkoutAnalysisRepository;
@@ -25,7 +23,6 @@ final readonly class RecoverWorkoutAnalysis
         private AnalysisTransaction $transaction,
         private AnalysisTaskScheduler $scheduler,
         private AnalysisExecutionPolicy $policy,
-        private InitializeWorkoutAnalysis $initialize,
     ) {}
 
     /** Служебная операция для одной сессии; кандидатов выбирает адаптер команды восстановления. */
@@ -33,10 +30,6 @@ final readonly class RecoverWorkoutAnalysis
     {
         $userId = new UserId($input->userId);
         $sessionId = new WorkoutSessionId($input->workoutSessionId);
-
-        if ($this->analyses->findForSession($sessionId, $userId) === null) {
-            return $this->initialize->handle(new InitializeWorkoutAnalysisInput($input->userId, $input->workoutSessionId));
-        }
 
         return $this->transaction->execute($userId, function () use ($userId, $sessionId): WorkoutDeviationAnalysisDTO {
             $analysis = $this->analyses->findForSession($sessionId, $userId) ?? throw new WorkoutAnalysisNotFound;

@@ -4,6 +4,7 @@ namespace App\WorkoutExecution\Infrastructure\Providers;
 
 use App\WorkoutExecution\Application\Gateways\TrainingProgramSnapshotProvider;
 use App\WorkoutExecution\Application\Gateways\WorkoutClock;
+use App\WorkoutExecution\Application\Gateways\WorkoutCompletionTransaction;
 use App\WorkoutExecution\Application\Gateways\WorkoutSessionHistoryProvider;
 use App\WorkoutExecution\Application\Gateways\WorkoutSessionMutationLock;
 use App\WorkoutExecution\Domain\Repositories\WorkoutSessionRepository;
@@ -12,6 +13,7 @@ use App\WorkoutExecution\Infrastructure\Locks\RedisWorkoutSessionMutationLock;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Gateways\EloquentWorkoutSessionHistoryProvider;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Repositories\EloquentWorkoutSessionRepository;
 use App\WorkoutExecution\Infrastructure\Time\UtcWorkoutClock;
+use App\WorkoutExecution\Infrastructure\Transactions\DatabaseWorkoutCompletionTransaction;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Foundation\Application;
@@ -22,6 +24,7 @@ final class WorkoutExecutionServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(WorkoutCompletionTransaction::class, DatabaseWorkoutCompletionTransaction::class);
         $this->app->bind(
             WorkoutSessionRepository::class,
             EloquentWorkoutSessionRepository::class,

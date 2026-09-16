@@ -38,7 +38,7 @@ final readonly class AnalysisUseCases
 
     public function recover(): RecoverWorkoutAnalysis
     {
-        return new RecoverWorkoutAnalysis($this->env, $this->env, $this->env, $this->env, $this->policy, $this->initialize());
+        return new RecoverWorkoutAnalysis($this->env, $this->env, $this->env, $this->env, $this->policy);
     }
 
     public function get(): GetWorkoutDeviationAnalysis
