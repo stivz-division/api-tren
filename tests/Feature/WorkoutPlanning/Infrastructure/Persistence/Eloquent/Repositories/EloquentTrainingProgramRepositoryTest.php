@@ -2,6 +2,7 @@
 
 use App\Models\Exercise;
 use App\Models\User;
+use App\WorkoutAnalysis\Infrastructure\Integrations\WorkoutPlanning\RecommendationPlanInvalidator;
 use App\WorkoutPlanning\Domain\Collections\PlannedExerciseCollection;
 use App\WorkoutPlanning\Domain\Collections\PlannedSetCollection;
 use App\WorkoutPlanning\Domain\Entities\PlannedExercise;
@@ -26,6 +27,7 @@ uses(LazilyRefreshDatabase::class);
 $repository = fn (): EloquentTrainingProgramRepository => new EloquentTrainingProgramRepository(
     new TrainingProgramMapper,
     app(DatabaseManager::class),
+    app(RecommendationPlanInvalidator::class),
 );
 
 $plannedExercise = static fn (

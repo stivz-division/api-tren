@@ -6,6 +6,7 @@ use App\WorkoutAnalysis\Application\Exceptions\WorkoutAnalysisNotFound;
 use App\WorkoutAnalysis\Application\Factories\CompletedWorkoutSnapshotFactory;
 use App\WorkoutAnalysis\Application\Gateways\AIProvider;
 use App\WorkoutAnalysis\Application\Gateways\CompletedWorkoutProvider;
+use App\WorkoutAnalysis\Application\Gateways\RecommendationPlanGateway;
 use App\WorkoutAnalysis\Application\Gateways\WorkoutHistoryProvider;
 use App\WorkoutAnalysis\Application\UseCases\CalculateWorkoutDeviations\CalculateWorkoutDeviations;
 use App\WorkoutAnalysis\Application\UseCases\CalculateWorkoutDeviations\CalculateWorkoutDeviationsInput;
@@ -28,6 +29,7 @@ use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutDeviationResult;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Models\WorkoutAIAnalysisModel;
 use App\WorkoutAnalysis\Infrastructure\Queue\GenerateWorkoutAIAnalysisJob;
+use App\WorkoutAnalysis\Infrastructure\Queue\GenerateWorkoutRecommendationsJob;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutSessionModel;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\Artisan;
@@ -61,6 +63,9 @@ it('calls the provider outside the database transaction and persists one conclus
     $userId = $analysis->deviations()->snapshot->userId;
     $this->mock(AIProvider::class)->shouldReceive('analyze')->once()->andReturnUsing(function (WorkoutAnalysisId $id, AnalysisContextSnapshot $context): WorkoutAIResult {
         expect(DB::transactionLevel())->toBe(0);
+        $stored = app(WorkoutAnalysisRepository::class)->findForUser($id, $context->currentWorkout->snapshot->userId);
+        expect($stored?->recommendationContext())->not->toBeNull();
+        expect($stored?->recommendations())->toBeNull();
 
         return new WorkoutAIResult($id, $context, 'План выполнен.', 'Истории пока нет.', 'test-model', 'resp_1', 1, 1);
     });
@@ -74,6 +79,9 @@ it('calls the provider outside the database transaction and persists one conclus
     expect($stored?->ai()?->result?->conclusion->currentWorkout)->toBe('План выполнен.');
     expect($stored?->context())->not->toBeNull();
     $this->assertDatabaseCount('workout_ai_attempts', 1);
+    expect($stored?->recommendations()?->status())->toBe(AnalysisStatus::Pending);
+    expect($stored?->recommendationContext())->not->toBeNull();
+    Queue::assertPushed(GenerateWorkoutRecommendationsJob::class, 1);
 });
 
 it('retries transient failures with the frozen context and ignores early delivery', function () use ($pendingAI): void {
@@ -88,6 +96,7 @@ it('retries transient failures with the frozen context and ignores early deliver
     $this->travel(5)->seconds();
     config()->set('workout-analysis.history.same_program_limit', 1);
     $this->mock(WorkoutHistoryProvider::class)->shouldNotReceive('read');
+    $this->mock(RecommendationPlanGateway::class)->shouldNotReceive('capture');
     $this->mock(AIProvider::class)->shouldReceive('analyze')->once()->andReturnUsing(function (WorkoutAnalysisId $id, AnalysisContextSnapshot $actual) use ($context): WorkoutAIResult {
         expect($actual)->toEqual($context);
 

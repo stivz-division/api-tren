@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\WorkoutAnalysis\Infrastructure\Integrations\WorkoutPlanning\RecommendationPlanInvalidator;
 use App\WorkoutExecution\Domain\Collections\WorkoutExerciseCollection;
 use App\WorkoutExecution\Domain\Collections\WorkoutSetCollection;
 use App\WorkoutExecution\Domain\Entities\WorkoutExercise;
@@ -30,6 +31,7 @@ uses(LazilyRefreshDatabase::class);
 $repository = fn (): EloquentWorkoutSessionRepository => new EloquentWorkoutSessionRepository(
     new WorkoutSessionMapper,
     app(DatabaseManager::class),
+    app(RecommendationPlanInvalidator::class),
 );
 
 $workoutExercise = static fn (

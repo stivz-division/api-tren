@@ -15,6 +15,8 @@ $expectedOpenApiOperations = [
     'GET /workout-sessions/{workoutSessionId}/analysis',
     'POST /auth',
     'POST /training-programs',
+    'POST /workout-recommendations/{recommendationId}/apply',
+    'POST /workout-recommendations/{recommendationId}/reject',
     'POST /workout-sessions/{workoutSessionId}/cancel',
     'POST /workout-sessions/{workoutSessionId}/complete',
     'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/complete',
@@ -376,6 +378,8 @@ it('documents route parameters without internal request fields', function () use
 ): void {
     $operationsWithPathParameters = [
         'GET /workout-sessions/{workoutSessionId}/analysis' => ['workoutSessionId'],
+        'POST /workout-recommendations/{recommendationId}/apply' => ['recommendationId'],
+        'POST /workout-recommendations/{recommendationId}/reject' => ['recommendationId'],
         'DELETE /training-programs/{trainingProgramId}' => ['trainingProgramId'],
         'PUT /training-programs/{trainingProgramId}' => ['trainingProgramId'],
         'GET /training-programs/weekdays/{weekday}' => ['weekday'],
@@ -394,6 +398,8 @@ it('documents route parameters without internal request fields', function () use
         'GET /workout-sessions',
         'GET /workout-sessions/active',
         'GET /workout-sessions/{workoutSessionId}/analysis',
+        'POST /workout-recommendations/{recommendationId}/apply',
+        'POST /workout-recommendations/{recommendationId}/reject',
         'POST /workout-sessions/{workoutSessionId}/cancel',
         'POST /workout-sessions/{workoutSessionId}/complete',
         'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/reopen',
@@ -447,6 +453,8 @@ it('documents success resources and API error responses', function () use (
 ): void {
     $expectedResponseStatuses = [
         'POST /auth' => ['200', '401', '429'],
+        'POST /workout-recommendations/{recommendationId}/apply' => ['200', '401', '404', '409', '422'],
+        'POST /workout-recommendations/{recommendationId}/reject' => ['200', '401', '404', '409', '422'],
         'GET /exercises' => ['200', '401'],
         'GET /training-programs' => ['200', '401'],
         'POST /training-programs' => ['201', '401', '409', '422'],
@@ -533,7 +541,7 @@ it('documents success resources and API error responses', function () use (
         }
 
         $this->assertSame(
-            ['id', 'workout_session_id', 'status', 'failure_code', 'result', 'ai_analysis'],
+            ['id', 'workout_session_id', 'status', 'overall_status', 'failure_code', 'result', 'ai_analysis', 'recommendation_generation'],
             array_keys($openApiArrayAt($document, ['components', 'schemas', 'WorkoutAnalysisResource', 'properties'])),
         );
         $this->assertSame(
@@ -553,6 +561,17 @@ it('documents success resources and API error responses', function () use (
                 ['type' => 'null'],
             ],
             $openApiArrayAt($document, ['components', 'schemas', 'WorkoutAnalysisResource', 'properties', 'ai_analysis', 'anyOf']),
+        );
+        $this->assertSame(
+            [
+                ['$ref' => '#/components/schemas/WorkoutRecommendationGenerationResource'],
+                ['type' => 'null'],
+            ],
+            $openApiArrayAt($document, ['components', 'schemas', 'WorkoutAnalysisResource', 'properties', 'recommendation_generation', 'anyOf']),
+        );
+        $this->assertSame(
+            ['proposed', 'applied', 'rejected', 'expired'],
+            $openApiArrayAt($document, ['components', 'schemas', 'WorkoutRecommendationResource', 'properties', 'status', 'enum']),
         );
         $this->assertSame(
             ['current_workout', 'history', 'evidence'],

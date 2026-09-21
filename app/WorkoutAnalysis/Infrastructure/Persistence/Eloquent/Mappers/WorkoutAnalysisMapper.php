@@ -22,6 +22,8 @@ final readonly class WorkoutAnalysisMapper
         private WorkoutDeviationResultCodec $resultCodec,
         private AnalysisContextSnapshotCodec $contextCodec,
         private WorkoutAIAnalysisMapper $aiMapper,
+        private WorkoutRecommendationGenerationMapper $recommendationMapper,
+        private RecommendationProgramContextCodec $recommendationContextCodec,
     ) {}
 
     public function toDomain(WorkoutAnalysisModel $model): WorkoutAnalysis
@@ -67,8 +69,19 @@ final readonly class WorkoutAnalysisMapper
             throw new LogicException('Этап ИИ должен быть загружен.');
         }
 
+        if (! $model->relationLoaded('recommendations')) {
+            throw new LogicException('Этап рекомендаций должен быть загружен.');
+        }
+        if (($model->recommendation_context === null) !== ($model->recommendation_context_version === null)) {
+            throw new UnexpectedValueException('Версия контекста программы не согласована с данными.');
+        }
+        $recommendationContext = $model->recommendation_context === null ? null : $this->recommendationContextCodec->decode(
+            $model->recommendation_context, $model->recommendation_context_version ?? 0,
+        );
+
         return WorkoutAnalysis::restore(new WorkoutAnalysisId($model->id), $deviations, $context,
-            $model->ai === null ? null : $this->aiMapper->toDomain($model->ai, $context));
+            $model->ai === null ? null : $this->aiMapper->toDomain($model->ai, $context),
+            $model->recommendations === null ? null : $this->recommendationMapper->toDomain($model->recommendations), $recommendationContext);
     }
 
     public function attemptToDomain(WorkoutDeviationAttemptModel $model): AnalysisAttempt

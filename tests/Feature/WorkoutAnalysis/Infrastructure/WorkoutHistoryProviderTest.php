@@ -8,17 +8,26 @@ use App\WorkoutAnalysis\Application\Gateways\CompletedWorkoutProvider;
 use App\WorkoutAnalysis\Application\Gateways\WorkoutHistoryProvider;
 use App\WorkoutAnalysis\Application\UseCases\PrepareWorkoutAnalysisContext\PrepareWorkoutAnalysisContext;
 use App\WorkoutAnalysis\Application\UseCases\PrepareWorkoutAnalysisContext\PrepareWorkoutAnalysisContextInput;
+use App\WorkoutAnalysis\Domain\Collections\WorkoutHistoryWindow;
 use App\WorkoutAnalysis\Domain\Entities\WorkoutAnalysis;
 use App\WorkoutAnalysis\Domain\Repositories\WorkoutAnalysisRepository;
 use App\WorkoutAnalysis\Domain\Services\WorkoutDeviationCalculator;
+use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisContextSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisEvidenceReference;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseId;
+use App\WorkoutAnalysis\Domain\ValueObjects\RecommendationBatch;
+use App\WorkoutAnalysis\Domain\ValueObjects\RecommendationProposal;
 use App\WorkoutAnalysis\Domain\ValueObjects\UserId;
+use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAIResult;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Models\WorkoutAnalysisModel;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Models\WorkoutDeviationAnalysisModel;
+use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Models\WorkoutRecommendationModel;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutSessionModel;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Tests\Support\WorkoutAnalysis\WorkoutAnalysisFixture;
 
 uses(LazilyRefreshDatabase::class);
 
@@ -132,3 +141,60 @@ it('excludes the current session even when its stored completion time differs fr
 
     expect($history->sameProgram)->toBe([]);
 });
+
+it('loads saved recommendation decisions without rebuilding old context and distinguishes a ready empty set', function (bool $withRecommendation) use ($session, $analyze): void {
+    $this->travelTo(new DateTimeImmutable('2026-09-22T12:00:00Z'));
+    $user = User::factory()->create();
+    $past = $session($user, 11, '2026-09-12 12:00:00');
+    $analysis = $analyze($past);
+    $id = $analysis->id ?? throw new LogicException('Отсутствует анализ.');
+    $now = new DateTimeImmutable('2026-09-20T12:00:02Z');
+    $context = new AnalysisContextSnapshot(
+        $analysis->deviations()->result ?? throw new LogicException('Нет отклонений.'),
+        new WorkoutHistoryWindow(20),
+        new WorkoutHistoryWindow(20), $now,
+    );
+    $analysis->attachContext($context);
+    $analysis->attachRecommendationContext(['program_id' => 11, 'exercises' => [], 'catalog' => []]);
+    $analysis->scheduleAI($now);
+    $analysis->startAIAttempt(1, $now, $now->modify('+1 minute'));
+    $analysis->completeAIAttempt(1, new WorkoutAIResult(
+        $id, $context, 'Нагрузка не выполнена.', 'Истории нет.', 'test-model', 'resp_saved', 1, 1,
+    ), $now);
+    $analysis->scheduleRecommendations($now);
+    $analysis->startRecommendationAttempt(1, $now, $now->modify('+1 minute'));
+    $evidence = new AnalysisEvidenceReference($id, new WorkoutSessionId($past->id), new ExerciseId(31));
+    $proposal = new RecommendationProposal(
+        31, 'adjustment', null, WorkoutAnalysisFixture::sets([[10, 45_000]]), 'Скорректировать нагрузку.', $evidence,
+    );
+    $analysis->completeRecommendationAttempt(1, new RecommendationBatch(
+        $withRecommendation ? [$proposal] : [], $withRecommendation ? null : 'Изменений не требуется.',
+    ), $now);
+    DB::transaction(fn () => app(WorkoutAnalysisRepository::class)->save($analysis));
+    if ($withRecommendation) {
+        WorkoutRecommendationModel::query()->create([
+            'user_id' => $user->id, 'workout_analysis_id' => $id->value, 'workout_session_id' => $past->id,
+            'training_program_id' => 11, 'exercise_id' => 31, 'source_revision' => 0, 'change_type' => 'adjustment',
+            'replacement_exercise_id' => null, 'status' => 'applied', 'rationale' => 'Скорректировать нагрузку.',
+            'original_sets' => [['position' => 1, 'repetitions' => 10, 'working_weight_grams' => 50000]],
+            'proposed_sets' => [['position' => 1, 'repetitions' => 10, 'working_weight_grams' => 45000]],
+            'evidence' => [['analysis_id' => $id->value, 'workout_session_id' => $past->id, 'exercise_id' => 31]],
+            'source_completed_at' => '2026-09-12 12:00:00', 'applied_at' => '2026-09-21 12:00:00',
+        ]);
+    }
+    $current = $analyze($session($user, 11, '2026-09-14 12:00:00'));
+    $currentId = $current->id ?? throw new LogicException('Отсутствует анализ.');
+    $input = new PrepareWorkoutAnalysisContextInput($user->id, $currentId->value);
+    $captured = app(PrepareWorkoutAnalysisContext::class)->handle($input);
+    $history = $captured->sameProgram->all()[0]->recommendations;
+
+    expect($history)->not->toBeNull();
+    expect($history?->analysisId)->toEqual($id);
+    expect($history?->recommendations)->toHaveCount($withRecommendation ? 1 : 0);
+    if ($withRecommendation) {
+        expect($history?->recommendations[0]->status)->toBe('applied');
+        expect($history?->recommendations[0]->proposedSets->all()[0]->workingWeight->grams)->toBe(45000);
+    }
+    WorkoutAnalysisModel::query()->whereKey($id->value)->update(['context_version' => 999]);
+    expect(app(PrepareWorkoutAnalysisContext::class)->handle($input))->toEqual($captured);
+})->with(['applied' => true, 'empty' => false]);

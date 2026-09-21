@@ -2,11 +2,14 @@
 
 namespace App\WorkoutAnalysis\Application\UseCases\GenerateWorkoutAIAnalysis;
 
+use App\WorkoutAnalysis\Application\DTO\RecommendationTask;
 use App\WorkoutAnalysis\Application\Exceptions\AIProviderFailed;
 use App\WorkoutAnalysis\Application\Exceptions\WorkoutAnalysisNotFound;
 use App\WorkoutAnalysis\Application\Gateways\AIProvider;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisClock;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisTransaction;
+use App\WorkoutAnalysis\Application\Gateways\RecommendationPlanGateway;
+use App\WorkoutAnalysis\Application\Gateways\RecommendationTaskScheduler;
 use App\WorkoutAnalysis\Application\Policies\AIExecutionPolicy;
 use App\WorkoutAnalysis\Application\UseCases\PrepareWorkoutAnalysisContext\PrepareWorkoutAnalysisContext;
 use App\WorkoutAnalysis\Application\UseCases\PrepareWorkoutAnalysisContext\PrepareWorkoutAnalysisContextInput;
@@ -29,6 +32,8 @@ final readonly class GenerateWorkoutAIAnalysis
         private PrepareWorkoutAnalysisContext $prepare,
         private AIProvider $provider,
         private RecordWorkoutAIFailure $failures,
+        private RecommendationPlanGateway $plans,
+        private RecommendationTaskScheduler $recommendationScheduler,
     ) {}
 
     /** Worker вызывает сценарий без внешней транзакции: сеть работает после commit захвата и контекста. */
@@ -50,7 +55,16 @@ final readonly class GenerateWorkoutAIAnalysis
             return $this->analyses->findForUser($analysisId, $userId)?->ai();
         }
         try {
-            $context = $this->prepare->handle(new PrepareWorkoutAnalysisContextInput($input->userId, $input->analysisId));
+            $context = $this->transaction->execute($userId, function () use ($input, $userId, $analysisId) {
+                $context = $this->prepare->handle(new PrepareWorkoutAnalysisContextInput($input->userId, $input->analysisId));
+                $analysis = $this->analyses->findForUser($analysisId, $userId) ?? throw new WorkoutAnalysisNotFound;
+                if ($analysis->recommendationContext() === null) {
+                    $analysis->attachRecommendationContext($this->plans->capture($analysis));
+                    $this->analyses->save($analysis);
+                }
+
+                return $context;
+            });
         } catch (WorkoutAnalysisNotFound $exception) {
             throw $exception;
         } catch (Throwable) {
@@ -66,8 +80,12 @@ final readonly class GenerateWorkoutAIAnalysis
 
         return $this->transaction->execute($userId, function () use ($input, $analysisId, $userId, $result): ?WorkoutAIAnalysis {
             $analysis = $this->analyses->findForUser($analysisId, $userId) ?? throw new WorkoutAnalysisNotFound;
-            if ($analysis->completeAIAttempt($input->attemptNumber, $result, $this->clock->now())) {
+            $now = $this->clock->now();
+            if ($analysis->completeAIAttempt($input->attemptNumber, $result, $now)) {
+                $analysis->scheduleRecommendations($now);
                 $this->analyses->save($analysis);
+                $task = RecommendationTask::fromDomain($analysis);
+                $this->transaction->afterCommit(fn () => $this->recommendationScheduler->schedule($task));
             }
 
             return $analysis->ai();

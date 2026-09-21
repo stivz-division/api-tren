@@ -5,12 +5,14 @@ namespace App\WorkoutPlanning\Infrastructure\Providers;
 use App\WorkoutPlanning\Application\Gateways\ExerciseCatalog;
 use App\WorkoutPlanning\Application\Gateways\TrainingProgramMutationLock;
 use App\WorkoutPlanning\Domain\Repositories\TrainingProgramRepository;
+use App\WorkoutPlanning\Infrastructure\Locks\DatabaseTrainingProgramMutationLock;
 use App\WorkoutPlanning\Infrastructure\Locks\RedisTrainingProgramMutationLock;
 use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Gateways\EloquentExerciseCatalog;
 use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Repositories\EloquentTrainingProgramRepository;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
 
@@ -25,7 +27,7 @@ final class WorkoutPlanningServiceProvider extends ServiceProvider
         $this->app->bind(ExerciseCatalog::class, EloquentExerciseCatalog::class);
         $this->app->singleton(
             TrainingProgramMutationLock::class,
-            static function (Application $application): RedisTrainingProgramMutationLock {
+            static function (Application $application): DatabaseTrainingProgramMutationLock {
                 $storeName = (string) config('workout-planning.mutation_lock.store', 'redis');
                 $store = $application->make(CacheFactory::class)
                     ->store($storeName)
@@ -38,11 +40,11 @@ final class WorkoutPlanningServiceProvider extends ServiceProvider
                     ));
                 }
 
-                return new RedisTrainingProgramMutationLock(
+                return new DatabaseTrainingProgramMutationLock(new RedisTrainingProgramMutationLock(
                     $store,
                     (int) config('workout-planning.mutation_lock.lock_seconds', 10),
                     (int) config('workout-planning.mutation_lock.wait_seconds', 3),
-                );
+                ), $application->make(DatabaseManager::class));
             },
         );
     }

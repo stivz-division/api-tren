@@ -5,7 +5,7 @@ use App\WorkoutExecution\Application\Gateways\WorkoutClock;
 use App\WorkoutExecution\Application\Gateways\WorkoutSessionMutationLock;
 use App\WorkoutExecution\Domain\Repositories\WorkoutSessionRepository;
 use App\WorkoutExecution\Infrastructure\Integrations\WorkoutPlanning\EloquentTrainingProgramSnapshotProvider;
-use App\WorkoutExecution\Infrastructure\Locks\RedisWorkoutSessionMutationLock;
+use App\WorkoutExecution\Infrastructure\Locks\DatabaseWorkoutSessionMutationLock;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Repositories\EloquentWorkoutSessionRepository;
 use App\WorkoutExecution\Infrastructure\Time\UtcWorkoutClock;
 
@@ -21,6 +21,6 @@ it('binds workout execution ports to infrastructure adapters', function (): void
         EloquentWorkoutSessionRepository::class,
         EloquentTrainingProgramSnapshotProvider::class,
         UtcWorkoutClock::class,
-        RedisWorkoutSessionMutationLock::class,
+        DatabaseWorkoutSessionMutationLock::class,
     ]);
 });

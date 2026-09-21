@@ -16,6 +16,99 @@
         }
     ],
     "paths": {
+        "/workout-recommendations/{recommendationId}/apply": {
+            "post": {
+                "operationId": "workout-recommendations.apply",
+                "summary": "\u041f\u0440\u0438\u043c\u0435\u043d\u0438\u0442\u044c \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u044e \u043a \u043f\u043b\u0430\u043d\u0443",
+                "tags": [
+                    "ApplyWorkoutRecommendation"
+                ],
+                "parameters": [
+                    {
+                        "name": "recommendationId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`WorkoutRecommendationResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/WorkoutRecommendationResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "description": "\u0420\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u044f \u043e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u0438\u043b\u0438 \u043f\u0440\u0438\u043d\u0430\u0434\u043b\u0435\u0436\u0438\u0442 \u0434\u0440\u0443\u0433\u043e\u043c\u0443 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044e.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "code",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "\u0420\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u044f \u0443\u0441\u0442\u0430\u0440\u0435\u043b\u0430, \u0443\u0436\u0435 \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u0430\u043d\u0430 \u0434\u0440\u0443\u0433\u0438\u043c \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435\u043c \u0438\u043b\u0438 \u043f\u0440\u043e\u0433\u0440\u0430\u043c\u043c\u0430 \u0438\u0437\u043c\u0435\u043d\u044f\u0435\u0442\u0441\u044f.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "code",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/auth": {
             "post": {
                 "operationId": "auth",
@@ -943,7 +1036,7 @@
         "/workout-sessions/{workoutSessionId}/analysis": {
             "get": {
                 "operationId": "workout-sessions.analysis.show",
-                "summary": "\u041f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u0441\u0442\u0430\u0442\u0443\u0441 \u0438 \u0441\u043e\u0445\u0440\u0430\u043d\u0451\u043d\u043d\u043e\u0435 \u0441\u0440\u0430\u0432\u043d\u0435\u043d\u0438\u0435 \u043f\u043b\u0430\u043d\u0430 \u0438 \u0444\u0430\u043a\u0442\u0430 \u0441\u0432\u043e\u0435\u0439 \u0442\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u043a\u0438",
+                "summary": "\u041f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u0441\u0440\u0430\u0432\u043d\u0435\u043d\u0438\u0435, \u0437\u0430\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435 \u0418\u0418, \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u0438 \u0438 \u0441\u0442\u0430\u0442\u0443\u0441\u044b \u0430\u043d\u0430\u043b\u0438\u0437\u0430 \u0441\u0432\u043e\u0435\u0439 \u0442\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u043a\u0438",
                 "tags": [
                     "GetWorkoutSessionAnalysis"
                 ],
@@ -1115,6 +1208,99 @@
                     },
                     "403": {
                         "$ref": "#/components/responses/AuthorizationException"
+                    }
+                }
+            }
+        },
+        "/workout-recommendations/{recommendationId}/reject": {
+            "post": {
+                "operationId": "workout-recommendations.reject",
+                "summary": "\u041e\u0442\u043a\u0430\u0437\u0430\u0442\u044c\u0441\u044f \u043e\u0442 \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u0438",
+                "tags": [
+                    "RejectWorkoutRecommendation"
+                ],
+                "parameters": [
+                    {
+                        "name": "recommendationId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "`WorkoutRecommendationResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/WorkoutRecommendationResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/ValidationException"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "description": "\u0420\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u044f \u043e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u0438\u043b\u0438 \u043f\u0440\u0438\u043d\u0430\u0434\u043b\u0435\u0436\u0438\u0442 \u0434\u0440\u0443\u0433\u043e\u043c\u0443 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044e.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "code",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "\u0420\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u044f \u0443\u0441\u0442\u0430\u0440\u0435\u043b\u0430, \u0443\u0436\u0435 \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u0430\u043d\u0430 \u0434\u0440\u0443\u0433\u0438\u043c \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435\u043c \u0438\u043b\u0438 \u043f\u0440\u043e\u0433\u0440\u0430\u043c\u043c\u0430 \u0438\u0437\u043c\u0435\u043d\u044f\u0435\u0442\u0441\u044f.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "code",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2041,6 +2227,15 @@
                             "failed"
                         ]
                     },
+                    "overall_status": {
+                        "type": "string",
+                        "enum": [
+                            "pending",
+                            "processing",
+                            "completed",
+                            "failed"
+                        ]
+                    },
                     "failure_code": {
                         "type": [
                             "string",
@@ -2073,15 +2268,27 @@
                                 "type": "null"
                             }
                         ]
+                    },
+                    "recommendation_generation": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/WorkoutRecommendationGenerationResource"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 },
                 "required": [
                     "id",
                     "workout_session_id",
                     "status",
+                    "overall_status",
                     "failure_code",
                     "result",
-                    "ai_analysis"
+                    "ai_analysis",
+                    "recommendation_generation"
                 ],
                 "title": "WorkoutAnalysisResource"
             },
@@ -2176,6 +2383,174 @@
                     "sets"
                 ],
                 "title": "WorkoutExerciseResource"
+            },
+            "WorkoutRecommendationGenerationResource": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "pending",
+                            "processing",
+                            "completed",
+                            "failed"
+                        ]
+                    },
+                    "failure_code": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "provider_unavailable",
+                            "provider_rejected",
+                            "ai_refused",
+                            "invalid_ai_response",
+                            "incomplete_ai_response",
+                            "context_preparation_failed",
+                            "recommendations_rejected",
+                            "worker_failed",
+                            "attempt_timed_out",
+                            null
+                        ]
+                    },
+                    "no_change_reason": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "rejected_reasons": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "items": {
+                        "type": [
+                            "array",
+                            "null"
+                        ],
+                        "items": {
+                            "$ref": "#/components/schemas/WorkoutRecommendationResource"
+                        }
+                    }
+                },
+                "required": [
+                    "status",
+                    "failure_code",
+                    "no_change_reason",
+                    "rejected_reasons",
+                    "items"
+                ],
+                "title": "WorkoutRecommendationGenerationResource"
+            },
+            "WorkoutRecommendationResource": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "exercise_id": {
+                        "type": "integer"
+                    },
+                    "change_type": {
+                        "type": "string",
+                        "enum": [
+                            "progression",
+                            "adjustment",
+                            "replacement"
+                        ]
+                    },
+                    "replacement_exercise_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "original_sets": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/AnalysisSetResource"
+                        }
+                    },
+                    "proposed_sets": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/AnalysisSetResource"
+                        }
+                    },
+                    "rationale": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "proposed",
+                            "applied",
+                            "rejected",
+                            "expired"
+                        ]
+                    },
+                    "applied_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "rejected_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "expired_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "evidence": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "analysis_id": {
+                                    "type": "integer"
+                                },
+                                "workout_session_id": {
+                                    "type": "integer"
+                                },
+                                "exercise_id": {
+                                    "type": [
+                                        "integer",
+                                        "null"
+                                    ]
+                                }
+                            },
+                            "required": [
+                                "analysis_id",
+                                "workout_session_id",
+                                "exercise_id"
+                            ]
+                        }
+                    }
+                },
+                "required": [
+                    "id",
+                    "exercise_id",
+                    "change_type",
+                    "replacement_exercise_id",
+                    "original_sets",
+                    "proposed_sets",
+                    "rationale",
+                    "status",
+                    "applied_at",
+                    "rejected_at",
+                    "expired_at",
+                    "evidence"
+                ],
+                "title": "WorkoutRecommendationResource"
             },
             "WorkoutSessionHistoryCollection": {
                 "type": "array",

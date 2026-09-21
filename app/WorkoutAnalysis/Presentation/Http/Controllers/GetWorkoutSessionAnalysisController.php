@@ -11,7 +11,7 @@ use Dedoc\Scramble\Attributes\Response as OpenApiResponse;
 
 final class GetWorkoutSessionAnalysisController extends Controller
 {
-    /** Получить статус и сохранённое сравнение плана и факта своей тренировки. */
+    /** Получить сравнение, заключение ИИ, рекомендации и статусы анализа своей тренировки. */
     #[PathParameter('workoutSessionId', type: 'int<1, max>')]
     #[OpenApiResponse(
         status: 404,

@@ -9,6 +9,7 @@ use App\WorkoutExecution\Application\Gateways\WorkoutSessionHistoryProvider;
 use App\WorkoutExecution\Application\Gateways\WorkoutSessionMutationLock;
 use App\WorkoutExecution\Domain\Repositories\WorkoutSessionRepository;
 use App\WorkoutExecution\Infrastructure\Integrations\WorkoutPlanning\EloquentTrainingProgramSnapshotProvider;
+use App\WorkoutExecution\Infrastructure\Locks\DatabaseWorkoutSessionMutationLock;
 use App\WorkoutExecution\Infrastructure\Locks\RedisWorkoutSessionMutationLock;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Gateways\EloquentWorkoutSessionHistoryProvider;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Repositories\EloquentWorkoutSessionRepository;
@@ -17,6 +18,7 @@ use App\WorkoutExecution\Infrastructure\Transactions\DatabaseWorkoutCompletionTr
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
 
@@ -40,7 +42,7 @@ final class WorkoutExecutionServiceProvider extends ServiceProvider
         $this->app->singleton(WorkoutClock::class, UtcWorkoutClock::class);
         $this->app->singleton(
             WorkoutSessionMutationLock::class,
-            static function (Application $application): RedisWorkoutSessionMutationLock {
+            static function (Application $application): DatabaseWorkoutSessionMutationLock {
                 $storeName = (string) config('workout-execution.mutation_lock.store', 'redis');
                 $store = $application->make(CacheFactory::class)
                     ->store($storeName)
@@ -53,11 +55,11 @@ final class WorkoutExecutionServiceProvider extends ServiceProvider
                     ));
                 }
 
-                return new RedisWorkoutSessionMutationLock(
+                return new DatabaseWorkoutSessionMutationLock(new RedisWorkoutSessionMutationLock(
                     $store,
                     (int) config('workout-execution.mutation_lock.lock_seconds', 60),
                     (int) config('workout-execution.mutation_lock.wait_seconds', 3),
-                );
+                ), $application->make(DatabaseManager::class));
             },
         );
     }

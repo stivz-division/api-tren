@@ -22,10 +22,13 @@ final class WorkoutAnalysisResource extends JsonResource
             'workout_session_id' => $value->workoutSessionId,
             /** @var 'pending'|'processing'|'completed'|'failed' */
             'status' => $value->status,
+            /** @var 'pending'|'processing'|'completed'|'failed' */
+            'overall_status' => $value->overallStatus,
             /** @var 'calculation_failed'|'arithmetic_overflow'|'worker_failed'|'attempt_timed_out'|null */
             'failure_code' => $value->status === 'failed' ? $attempt->failureCode : null,
             'result' => $value->result === null ? null : new WorkoutDeviationResultResource($value->result),
             'ai_analysis' => $value->ai === null ? null : new WorkoutAIAnalysisResource($value->ai),
+            'recommendation_generation' => $value->recommendations === null ? null : new WorkoutRecommendationGenerationResource($value->recommendations),
         ];
     }
 }

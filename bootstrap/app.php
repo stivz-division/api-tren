@@ -1,5 +1,7 @@
 <?php
 
+use App\WorkoutAnalysis\Application\Exceptions\RecommendationConflict;
+use App\WorkoutAnalysis\Application\Exceptions\RecommendationNotFound;
 use App\WorkoutAnalysis\Application\Exceptions\WorkoutAnalysisNotFound;
 use App\WorkoutExecution\Application\Exceptions\InvalidTrainingProgramSnapshot;
 use App\WorkoutExecution\Application\Exceptions\TrainingProgramNotFound as ExecutionTrainingProgramNotFound;
@@ -34,6 +36,18 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(
+            fn (RecommendationNotFound $exception): JsonResponse => response()->json([
+                'code' => 'workout_recommendation_not_found',
+                'message' => 'Рекомендация не найдена.',
+            ], Response::HTTP_NOT_FOUND),
+        );
+        $exceptions->render(
+            fn (RecommendationConflict $exception): JsonResponse => response()->json([
+                'code' => 'workout_recommendation_conflict',
+                'message' => 'Рекомендация устарела или уже обработана другим действием.',
+            ], Response::HTTP_CONFLICT),
+        );
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

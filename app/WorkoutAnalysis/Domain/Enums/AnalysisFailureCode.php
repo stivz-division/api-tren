@@ -4,6 +4,7 @@ namespace App\WorkoutAnalysis\Domain\Enums;
 
 enum AnalysisFailureCode: string
 {
+    case RecommendationsRejected = 'recommendations_rejected';
     case ProviderUnavailable = 'provider_unavailable';
     case ProviderRejected = 'provider_rejected';
     case AIRefused = 'ai_refused';

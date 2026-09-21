@@ -63,9 +63,11 @@ it('returns the saved stage without exposing attempts or starting jobs', functio
             'id' => $analysis->id?->value,
             'workout_session_id' => 51,
             'status' => $status,
+            'overall_status' => $status,
             'failure_code' => $failureCode,
             'result' => null,
             'ai_analysis' => null,
+            'recommendation_generation' => null,
         ],
     ]);
 

@@ -3,6 +3,7 @@
 namespace App\WorkoutAnalysis\Application\DTO;
 
 use App\WorkoutAnalysis\Domain\Entities\WorkoutAnalysis;
+use App\WorkoutAnalysis\Domain\ValueObjects\HistoricalRecommendation;
 use LogicException;
 
 final readonly class WorkoutDeviationAnalysisDTO
@@ -16,9 +17,12 @@ final readonly class WorkoutDeviationAnalysisDTO
         public private(set) array $attempts,
         public private(set) ?WorkoutDeviationResultDTO $result,
         public private(set) ?WorkoutAIAnalysisDTO $ai = null,
+        public string $overallStatus = 'pending',
+        public ?WorkoutRecommendationGenerationDTO $recommendations = null,
     ) {}
 
-    public static function fromDomain(WorkoutAnalysis $analysis): self
+    /** @param list<HistoricalRecommendation> $recommendations */
+    public static function fromDomain(WorkoutAnalysis $analysis, array $recommendations = []): self
     {
         $id = $analysis->id ?? throw new LogicException('Нельзя вернуть несохранённый анализ.');
         $stage = $analysis->deviations();
@@ -31,6 +35,8 @@ final readonly class WorkoutDeviationAnalysisDTO
             array_map(AnalysisAttemptDTO::fromDomain(...), $stage->attempts()),
             $stage->result === null ? null : WorkoutDeviationResultDTO::fromDomain($stage->result),
             $analysis->ai() === null ? null : WorkoutAIAnalysisDTO::fromDomain($analysis->ai()),
+            $analysis->overallStatus()->value,
+            $analysis->recommendations() === null ? null : WorkoutRecommendationGenerationDTO::fromDomain($analysis->recommendations(), $recommendations),
         );
     }
 }

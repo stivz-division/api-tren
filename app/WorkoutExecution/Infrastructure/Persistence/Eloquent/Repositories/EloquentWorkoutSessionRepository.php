@@ -2,6 +2,7 @@
 
 namespace App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Repositories;
 
+use App\WorkoutAnalysis\Infrastructure\Integrations\WorkoutPlanning\RecommendationPlanInvalidator;
 use App\WorkoutExecution\Domain\Collections\WorkoutSetCollection;
 use App\WorkoutExecution\Domain\Entities\WorkoutExercise;
 use App\WorkoutExecution\Domain\Entities\WorkoutSession;
@@ -30,6 +31,7 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
     public function __construct(
         private WorkoutSessionMapper $mapper,
         private DatabaseManager $database,
+        private RecommendationPlanInvalidator $invalidator,
     ) {}
 
     public function findForUser(WorkoutSessionId $id, UserId $userId): ?WorkoutSession
@@ -77,6 +79,7 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
                     'cancelled_at' => $this->nullableToUtc($session->cancelledAt),
                 ]);
 
+                $this->invalidator->expireProgram($session->userId->value, $session->programSnapshot->trainingProgramId->value, $session->startedAt);
                 foreach ($session->workoutExercises() as $exercise) {
                     $exerciseModel = $model->workoutExercises()->create(
                         $this->exerciseAttributes($exercise),

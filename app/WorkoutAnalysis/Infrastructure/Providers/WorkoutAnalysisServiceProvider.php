@@ -8,23 +8,30 @@ use App\WorkoutAnalysis\Application\Gateways\AnalysisClock;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisTaskScheduler;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisTransaction;
 use App\WorkoutAnalysis\Application\Gateways\CompletedWorkoutProvider;
+use App\WorkoutAnalysis\Application\Gateways\RecommendationPlanGateway;
+use App\WorkoutAnalysis\Application\Gateways\RecommendationProvider;
+use App\WorkoutAnalysis\Application\Gateways\RecommendationTaskScheduler;
 use App\WorkoutAnalysis\Application\Gateways\WorkoutHistoryProvider;
 use App\WorkoutAnalysis\Application\Policies\AIExecutionPolicy;
 use App\WorkoutAnalysis\Application\Policies\AnalysisExecutionPolicy;
 use App\WorkoutAnalysis\Application\Policies\AnalysisHistoryPolicy;
 use App\WorkoutAnalysis\Domain\Repositories\WorkoutAnalysisRepository;
 use App\WorkoutAnalysis\Infrastructure\Integrations\OpenAI\OpenAIAnalysisProvider;
+use App\WorkoutAnalysis\Infrastructure\Integrations\OpenAI\OpenAIRecommendationProvider;
 use App\WorkoutAnalysis\Infrastructure\Integrations\WorkoutExecution\EloquentCompletedWorkoutProvider;
 use App\WorkoutAnalysis\Infrastructure\Integrations\WorkoutExecution\EloquentWorkoutHistoryProvider;
 use App\WorkoutAnalysis\Infrastructure\Integrations\WorkoutExecution\InitializeAnalysisOnWorkoutCompletion;
+use App\WorkoutAnalysis\Infrastructure\Integrations\WorkoutPlanning\EloquentRecommendationPlanGateway;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Repositories\EloquentWorkoutAnalysisRepository;
 use App\WorkoutAnalysis\Infrastructure\Queue\LaravelAIAnalysisTaskScheduler;
 use App\WorkoutAnalysis\Infrastructure\Queue\LaravelAnalysisTaskScheduler;
+use App\WorkoutAnalysis\Infrastructure\Queue\LaravelRecommendationTaskScheduler;
 use App\WorkoutAnalysis\Infrastructure\Time\UtcAnalysisClock;
 use App\WorkoutAnalysis\Infrastructure\Transactions\DatabaseAnalysisTransaction;
 use App\WorkoutAnalysis\Presentation\Console\RecoverWorkoutAnalysisCommand;
 use App\WorkoutAnalysis\Presentation\Console\RetryWorkoutAIAnalysisCommand;
 use App\WorkoutAnalysis\Presentation\Console\RetryWorkoutDeviationAnalysisCommand;
+use App\WorkoutAnalysis\Presentation\Console\RetryWorkoutRecommendationsCommand;
 use App\WorkoutExecution\Application\Gateways\WorkoutCompletionNotifier;
 use Illuminate\Support\ServiceProvider;
 
@@ -32,6 +39,9 @@ final class WorkoutAnalysisServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(RecommendationProvider::class, OpenAIRecommendationProvider::class);
+        $this->app->bind(RecommendationPlanGateway::class, EloquentRecommendationPlanGateway::class);
+        $this->app->bind(RecommendationTaskScheduler::class, LaravelRecommendationTaskScheduler::class);
         $this->app->bind(AIProvider::class, OpenAIAnalysisProvider::class);
         $this->app->bind(AIAnalysisTaskScheduler::class, LaravelAIAnalysisTaskScheduler::class);
         $this->app->singleton(AIExecutionPolicy::class, static function (): AIExecutionPolicy {
@@ -72,7 +82,7 @@ final class WorkoutAnalysisServiceProvider extends ServiceProvider
     public function boot(): void
     {
         if ($this->app->runningInConsole()) {
-            $this->commands([RecoverWorkoutAnalysisCommand::class, RetryWorkoutDeviationAnalysisCommand::class, RetryWorkoutAIAnalysisCommand::class]);
+            $this->commands([RecoverWorkoutAnalysisCommand::class, RetryWorkoutDeviationAnalysisCommand::class, RetryWorkoutAIAnalysisCommand::class, RetryWorkoutRecommendationsCommand::class]);
         }
     }
 }

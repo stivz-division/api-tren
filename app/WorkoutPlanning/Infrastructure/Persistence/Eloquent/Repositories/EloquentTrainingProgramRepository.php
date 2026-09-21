@@ -2,6 +2,8 @@
 
 namespace App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Repositories;
 
+use App\Models\User;
+use App\WorkoutAnalysis\Infrastructure\Integrations\WorkoutPlanning\RecommendationPlanInvalidator;
 use App\WorkoutPlanning\Domain\Entities\PlannedExercise;
 use App\WorkoutPlanning\Domain\Entities\TrainingProgram;
 use App\WorkoutPlanning\Domain\Enums\Weekday;
@@ -22,6 +24,7 @@ final readonly class EloquentTrainingProgramRepository implements TrainingProgra
     public function __construct(
         private TrainingProgramMapper $mapper,
         private DatabaseManager $database,
+        private RecommendationPlanInvalidator $invalidator,
     ) {}
 
     public function findAllForUser(UserId $userId): array
@@ -63,6 +66,7 @@ final readonly class EloquentTrainingProgramRepository implements TrainingProgra
 
         try {
             $model = $this->database->transaction(function () use ($trainingProgram): TrainingProgramModel {
+                User::query()->whereKey($trainingProgram->userId->value)->lockForUpdate()->firstOrFail();
                 $model = TrainingProgramModel::query()->create([
                     'user_id' => $trainingProgram->userId->value,
                     'weekday' => $trainingProgram->weekday->value,
@@ -92,6 +96,7 @@ final readonly class EloquentTrainingProgramRepository implements TrainingProgra
         $id = $this->identityOf($trainingProgram);
 
         $this->database->transaction(function () use ($id, $trainingProgram): void {
+            User::query()->whereKey($trainingProgram->userId->value)->lockForUpdate()->firstOrFail();
             $model = TrainingProgramModel::query()
                 ->whereKey($id->value)
                 ->where('user_id', $trainingProgram->userId->value)
@@ -100,6 +105,20 @@ final readonly class EloquentTrainingProgramRepository implements TrainingProgra
 
             if ($model === null) {
                 throw new LogicException('Нельзя сохранить несуществующую программу тренировок.');
+            }
+
+            $model->load('plannedExercises.plannedSets');
+            $newSets = [];
+            foreach ($trainingProgram->plannedExercises() as $exercise) {
+                $newSets[$exercise->exerciseId->value] = $this->plannedSetAttributes($exercise);
+            }
+            foreach ($model->plannedExercises as $exercise) {
+                $oldSets = $exercise->plannedSets->map(static fn ($set): array => [
+                    'position' => $set->position, 'repetitions' => $set->repetitions, 'working_weight_grams' => $set->working_weight_grams,
+                ])->all();
+                if (($newSets[$exercise->exercise_id] ?? null) !== $oldSets) {
+                    $this->invalidator->changed($trainingProgram->userId->value, $id->value, $exercise->exercise_id, now()->toDateTimeImmutable());
+                }
             }
 
             $model->update([
@@ -114,14 +133,14 @@ final readonly class EloquentTrainingProgramRepository implements TrainingProgra
     public function delete(TrainingProgram $trainingProgram): void
     {
         $id = $this->identityOf($trainingProgram);
-        $deletedRows = TrainingProgramModel::query()
-            ->whereKey($id->value)
-            ->where('user_id', $trainingProgram->userId->value)
-            ->delete();
-
-        if ($deletedRows !== 1) {
-            throw new LogicException('Нельзя удалить несуществующую программу тренировок.');
-        }
+        $this->database->transaction(function () use ($id, $trainingProgram): void {
+            User::query()->whereKey($trainingProgram->userId->value)->lockForUpdate()->firstOrFail();
+            $deletedRows = TrainingProgramModel::query()->whereKey($id->value)->where('user_id', $trainingProgram->userId->value)->delete();
+            if ($deletedRows !== 1) {
+                throw new LogicException('Нельзя удалить несуществующую программу тренировок.');
+            }
+            $this->invalidator->expireProgram($trainingProgram->userId->value, $id->value, now()->toDateTimeImmutable());
+        });
     }
 
     /** @return Builder<TrainingProgramModel> */
