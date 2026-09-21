@@ -65,6 +65,7 @@ it('returns the saved stage without exposing attempts or starting jobs', functio
             'status' => $status,
             'failure_code' => $failureCode,
             'result' => null,
+            'ai_analysis' => null,
         ],
     ]);
 

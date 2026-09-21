@@ -50,7 +50,7 @@ $resolvedSession = static function (): WorkoutSessionModel {
 };
 
 it('atomically creates pending analysis when the workout is completed and dispatches its first attempt', function () use ($resolvedSession): void {
-    Queue::fake([CalculateWorkoutDeviationsJob::class]);
+    Queue::fake();
     $session = $resolvedSession();
 
     $this->postJson("/api/workout-sessions/{$session->id}/complete")
@@ -62,7 +62,7 @@ it('atomically creates pending analysis when the workout is completed and dispat
 });
 
 it('rolls back completion when a completed snapshot cannot be obtained', function () use ($resolvedSession): void {
-    Queue::fake([CalculateWorkoutDeviationsJob::class]);
+    Queue::fake();
     $session = $resolvedSession();
     $this->mock(CompletedWorkoutProvider::class)
         ->shouldReceive('findForUser')->once()->andReturnNull();
@@ -76,7 +76,7 @@ it('rolls back completion when a completed snapshot cannot be obtained', functio
 });
 
 it('waits for the outer commit before dispatching', function () use ($resolvedSession): void {
-    Queue::fake([CalculateWorkoutDeviationsJob::class]);
+    Queue::fake();
     $session = $resolvedSession();
     DB::beginTransaction();
 
@@ -88,7 +88,7 @@ it('waits for the outer commit before dispatching', function () use ($resolvedSe
 });
 
 it('discards the analysis and dispatch when the outer transaction rolls back', function () use ($resolvedSession): void {
-    Queue::fake([CalculateWorkoutDeviationsJob::class]);
+    Queue::fake();
     $session = $resolvedSession();
     DB::beginTransaction();
     $this->postJson("/api/workout-sessions/{$session->id}/complete")->assertOk();
@@ -101,7 +101,7 @@ it('discards the analysis and dispatch when the outer transaction rolls back', f
 });
 
 it('does not recreate or dispatch analysis on repeated completion', function () use ($resolvedSession): void {
-    Queue::fake([CalculateWorkoutDeviationsJob::class]);
+    Queue::fake();
     $session = $resolvedSession();
     $this->postJson("/api/workout-sessions/{$session->id}/complete")->assertOk();
 
@@ -113,7 +113,7 @@ it('does not recreate or dispatch analysis on repeated completion', function () 
 });
 
 it('leaves historical completed workouts without analysis on repeated completion and recovery', function () use ($resolvedSession): void {
-    Queue::fake([CalculateWorkoutDeviationsJob::class]);
+    Queue::fake();
     $session = $resolvedSession();
     $session->update(['status' => 'completed', 'completed_at' => now()->subMinutes(30)]);
 
@@ -132,7 +132,7 @@ it('recovers a pending attempt after dispatch fails without undoing workout comp
 
     expect($session->refresh()->status)->toBe('completed');
     $this->assertDatabaseHas('workout_deviation_analyses', ['status' => 'pending', 'current_attempt_number' => 1]);
-    Queue::fake([CalculateWorkoutDeviationsJob::class]);
+    Queue::fake();
     $this->travel(61)->seconds();
     expect(Artisan::call('workout-analysis:recover'))->toBe(0);
     Queue::assertPushed(CalculateWorkoutDeviationsJob::class, fn (CalculateWorkoutDeviationsJob $job): bool => $job->attemptNumber === 1);
@@ -140,7 +140,7 @@ it('recovers a pending attempt after dispatch fails without undoing workout comp
 });
 
 it('processes the persisted snapshot and ignores duplicate job delivery', function () use ($resolvedSession): void {
-    Queue::fake([CalculateWorkoutDeviationsJob::class]);
+    Queue::fake();
     $session = $resolvedSession();
     $this->postJson("/api/workout-sessions/{$session->id}/complete")->assertOk();
     $analysisId = WorkoutAnalysisModel::query()->sole()->id;
@@ -163,7 +163,7 @@ it('processes the persisted snapshot and ignores duplicate job delivery', functi
 });
 
 it('does not enqueue fresh pending work during recovery', function () use ($resolvedSession): void {
-    Queue::fake([CalculateWorkoutDeviationsJob::class]);
+    Queue::fake();
     $session = $resolvedSession();
     $this->postJson("/api/workout-sessions/{$session->id}/complete")->assertOk();
 
@@ -173,7 +173,7 @@ it('does not enqueue fresh pending work during recovery', function () use ($reso
 });
 
 it('recovers expired processing attempts up to the budget and permits a service retry', function () use ($resolvedSession): void {
-    Queue::fake([CalculateWorkoutDeviationsJob::class]);
+    Queue::fake();
     $session = $resolvedSession();
     $this->postJson("/api/workout-sessions/{$session->id}/complete")->assertOk();
     $model = WorkoutAnalysisModel::query()->sole();
@@ -207,7 +207,7 @@ it('recovers expired processing attempts up to the budget and permits a service 
 });
 
 it('keeps processing other recovery candidates when one stored snapshot is damaged', function () use ($resolvedSession): void {
-    Queue::fake([CalculateWorkoutDeviationsJob::class]);
+    Queue::fake();
     $first = $resolvedSession();
     $this->postJson("/api/workout-sessions/{$first->id}/complete")->assertOk();
     $second = $resolvedSession();
@@ -224,7 +224,7 @@ it('keeps processing other recovery candidates when one stored snapshot is damag
 });
 
 it('never creates analysis on exercise completion alone', function () use ($resolvedSession): void {
-    Queue::fake([CalculateWorkoutDeviationsJob::class]);
+    Queue::fake();
     $session = $resolvedSession();
     $session->workoutExercises()->update(['status' => 'pending']);
 
@@ -258,7 +258,7 @@ it('rejects invalid or missing analysis identifiers in the service retry command
 });
 
 it('rounds delayed delivery up so redis cannot acknowledge an attempt before its scheduled microsecond', function (): void {
-    Queue::fake([CalculateWorkoutDeviationsJob::class]);
+    Queue::fake();
 
     app(AnalysisTaskScheduler::class)->schedule(
         new DeviationTask(1, 7, 2, new DateTimeImmutable('2026-09-17T12:00:05.900000+00:00')),
@@ -268,7 +268,7 @@ it('rounds delayed delivery up so redis cannot acknowledge an attempt before its
 });
 
 it('rejects inconsistent persisted stage and attempt states in postgres', function () use ($resolvedSession): void {
-    Queue::fake([CalculateWorkoutDeviationsJob::class]);
+    Queue::fake();
     $session = $resolvedSession();
     $this->postJson("/api/workout-sessions/{$session->id}/complete")->assertOk();
 
@@ -282,7 +282,7 @@ it('rejects inconsistent persisted stage and attempt states in postgres', functi
 })->skip(fn (): bool => DB::connection()->getDriverName() !== 'pgsql', 'Requires PostgreSQL constraints.');
 
 it('dispatches the initial attempt immediately even when its timestamp has microseconds', function (): void {
-    Queue::fake([CalculateWorkoutDeviationsJob::class]);
+    Queue::fake();
     $now = new DateTimeImmutable('2026-09-17T12:00:00.900000+00:00');
     $this->travelTo($now);
 

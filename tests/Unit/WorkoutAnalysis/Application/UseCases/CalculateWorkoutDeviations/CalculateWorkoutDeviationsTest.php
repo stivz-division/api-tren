@@ -104,7 +104,7 @@ it('rejects a late application result after recovery has replaced its attempt', 
         }
     };
     $calculate = new CalculateWorkoutDeviations(
-        $env, new WorkoutDeviationCalculator, $env, $transaction, $app->policy, $app->failures(),
+        $env, new WorkoutDeviationCalculator, $env, $transaction, $app->policy, $app->failures(), $env->aiScheduler(),
     );
 
     $dto = $calculate->handle(new CalculateWorkoutDeviationsInput(7, 1, 1));

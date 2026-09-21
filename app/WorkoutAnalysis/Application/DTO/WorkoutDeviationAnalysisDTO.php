@@ -15,6 +15,7 @@ final readonly class WorkoutDeviationAnalysisDTO
         public private(set) string $status,
         public private(set) array $attempts,
         public private(set) ?WorkoutDeviationResultDTO $result,
+        public private(set) ?WorkoutAIAnalysisDTO $ai = null,
     ) {}
 
     public static function fromDomain(WorkoutAnalysis $analysis): self
@@ -29,6 +30,7 @@ final readonly class WorkoutDeviationAnalysisDTO
             $stage->status()->value,
             array_map(AnalysisAttemptDTO::fromDomain(...), $stage->attempts()),
             $stage->result === null ? null : WorkoutDeviationResultDTO::fromDomain($stage->result),
+            $analysis->ai() === null ? null : WorkoutAIAnalysisDTO::fromDomain($analysis->ai()),
         );
     }
 }

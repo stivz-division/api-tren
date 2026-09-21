@@ -533,7 +533,7 @@ it('documents success resources and API error responses', function () use (
         }
 
         $this->assertSame(
-            ['id', 'workout_session_id', 'status', 'failure_code', 'result'],
+            ['id', 'workout_session_id', 'status', 'failure_code', 'result', 'ai_analysis'],
             array_keys($openApiArrayAt($document, ['components', 'schemas', 'WorkoutAnalysisResource', 'properties'])),
         );
         $this->assertSame(
@@ -546,6 +546,17 @@ it('documents success resources and API error responses', function () use (
                 ['type' => 'null'],
             ],
             $openApiArrayAt($document, ['components', 'schemas', 'WorkoutAnalysisResource', 'properties', 'result', 'anyOf']),
+        );
+        $this->assertSame(
+            [
+                ['$ref' => '#/components/schemas/WorkoutAIAnalysisResource'],
+                ['type' => 'null'],
+            ],
+            $openApiArrayAt($document, ['components', 'schemas', 'WorkoutAnalysisResource', 'properties', 'ai_analysis', 'anyOf']),
+        );
+        $this->assertSame(
+            ['current_workout', 'history', 'evidence'],
+            $openApiArrayAt($document, ['components', 'schemas', 'WorkoutAIAnalysisResource', 'properties', 'result', 'required']),
         );
         $this->assertSame(
             'date-time',

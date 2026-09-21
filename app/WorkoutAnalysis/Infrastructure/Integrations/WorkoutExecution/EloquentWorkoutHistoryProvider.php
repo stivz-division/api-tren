@@ -7,7 +7,10 @@ use App\WorkoutAnalysis\Application\DTO\WorkoutHistoryData;
 use App\WorkoutAnalysis\Application\DTO\WorkoutHistoryQuery;
 use App\WorkoutAnalysis\Application\Gateways\WorkoutHistoryProvider;
 use App\WorkoutAnalysis\Domain\Enums\AnalysisStatus;
+use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAnalysisId;
+use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\CompletedWorkoutSnapshotCodec;
+use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\WorkoutAIResultCodec;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\WorkoutDeviationResultCodec;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Models\WorkoutAnalysisModel;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutSessionModel;
@@ -23,6 +26,7 @@ final readonly class EloquentWorkoutHistoryProvider implements WorkoutHistoryPro
         private CompletedWorkoutDataMapper $workouts,
         private CompletedWorkoutSnapshotCodec $snapshotCodec,
         private WorkoutDeviationResultCodec $resultCodec,
+        private WorkoutAIResultCodec $aiResultCodec,
     ) {}
 
     public function read(WorkoutHistoryQuery $query): WorkoutHistoryData
@@ -56,12 +60,13 @@ final readonly class EloquentWorkoutHistoryProvider implements WorkoutHistoryPro
         }
         $analyses = WorkoutAnalysisModel::query()->select(['id', 'user_id', 'workout_session_id', 'snapshot', 'snapshot_version'])
             ->where('user_id', $query->userId)->whereIn('workout_session_id', $sessions->modelKeys())
-            ->with('deviations')->get()->keyBy('workout_session_id');
+            ->with('deviations', 'ai')->get()->keyBy('workout_session_id');
 
         $entries = [];
         foreach ($sessions as $session) {
             $analysis = $analyses->get($session->id);
             $result = null;
+            $conclusion = null;
             if ($analysis !== null) {
                 $stage = $analysis->deviations ?? throw new UnexpectedValueException('Отсутствует этап сравнения исторического анализа.');
                 if ($stage->status === AnalysisStatus::Completed->value) {
@@ -76,7 +81,14 @@ final readonly class EloquentWorkoutHistoryProvider implements WorkoutHistoryPro
                     );
                 }
             }
-            $entries[] = new HistoricalWorkoutData($this->workouts->toData($session), $result);
+            if ($analysis?->ai?->status === AnalysisStatus::Completed->value) {
+                $conclusion = $this->aiResultCodec->decodeConclusion(
+                    $analysis->ai->result ?? throw new UnexpectedValueException('Отсутствует готовое заключение.'),
+                    $analysis->ai->result_version ?? throw new UnexpectedValueException('Отсутствует версия заключения.'),
+                    new WorkoutAnalysisId($analysis->id), new WorkoutSessionId($session->id),
+                );
+            }
+            $entries[] = new HistoricalWorkoutData($this->workouts->toData($session), $result, $conclusion);
         }
 
         return $entries;

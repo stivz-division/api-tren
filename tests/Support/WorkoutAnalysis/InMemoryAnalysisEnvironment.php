@@ -2,12 +2,14 @@
 
 namespace Tests\Support\WorkoutAnalysis;
 
+use App\WorkoutAnalysis\Application\DTO\AIAnalysisTask;
 use App\WorkoutAnalysis\Application\DTO\CompletedWorkoutData;
 use App\WorkoutAnalysis\Application\DTO\DeviationTask;
 use App\WorkoutAnalysis\Application\DTO\ExercisePerformanceData;
 use App\WorkoutAnalysis\Application\DTO\SetSnapshotData;
 use App\WorkoutAnalysis\Application\DTO\WorkoutHistoryData;
 use App\WorkoutAnalysis\Application\DTO\WorkoutHistoryQuery;
+use App\WorkoutAnalysis\Application\Gateways\AIAnalysisTaskScheduler;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisClock;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisTaskScheduler;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisTransaction;
@@ -36,6 +38,22 @@ final class InMemoryAnalysisEnvironment implements AnalysisClock, AnalysisTaskSc
 
     /** @var list<DeviationTask> */
     public array $tasks = [];
+
+    /** @var list<AIAnalysisTask> */
+    public array $aiTasks = [];
+
+    public function aiScheduler(): AIAnalysisTaskScheduler
+    {
+        return new class($this) implements AIAnalysisTaskScheduler
+        {
+            public function __construct(private InMemoryAnalysisEnvironment $env) {}
+
+            public function schedule(AIAnalysisTask $task): void
+            {
+                $this->env->aiTasks[] = $task;
+            }
+        };
+    }
 
     public ?CompletedWorkoutData $source;
 

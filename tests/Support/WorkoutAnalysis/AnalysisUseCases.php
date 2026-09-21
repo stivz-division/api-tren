@@ -31,7 +31,7 @@ final readonly class AnalysisUseCases
 
     public function calculate(): CalculateWorkoutDeviations
     {
-        return new CalculateWorkoutDeviations($this->env, new WorkoutDeviationCalculator, $this->env, $this->env, $this->policy, $this->failures());
+        return new CalculateWorkoutDeviations($this->env, new WorkoutDeviationCalculator, $this->env, $this->env, $this->policy, $this->failures(), $this->env->aiScheduler());
     }
 
     public function retry(): RetryWorkoutDeviationAnalysis

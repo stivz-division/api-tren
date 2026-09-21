@@ -21,6 +21,7 @@ final readonly class WorkoutAnalysisMapper
         private CompletedWorkoutSnapshotCodec $snapshotCodec,
         private WorkoutDeviationResultCodec $resultCodec,
         private AnalysisContextSnapshotCodec $contextCodec,
+        private WorkoutAIAnalysisMapper $aiMapper,
     ) {}
 
     public function toDomain(WorkoutAnalysisModel $model): WorkoutAnalysis
@@ -62,7 +63,12 @@ final readonly class WorkoutAnalysisMapper
             $result ?? throw new UnexpectedValueException('Контекст сохранён без готового результата сравнения.'),
         );
 
-        return WorkoutAnalysis::restore(new WorkoutAnalysisId($model->id), $deviations, $context);
+        if (! $model->relationLoaded('ai')) {
+            throw new LogicException('Этап ИИ должен быть загружен.');
+        }
+
+        return WorkoutAnalysis::restore(new WorkoutAnalysisId($model->id), $deviations, $context,
+            $model->ai === null ? null : $this->aiMapper->toDomain($model->ai, $context));
     }
 
     public function attemptToDomain(WorkoutDeviationAttemptModel $model): AnalysisAttempt

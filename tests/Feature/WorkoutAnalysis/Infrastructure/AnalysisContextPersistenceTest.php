@@ -123,7 +123,7 @@ it('rejects a context payload without its version or a version without its paylo
     $analysis = $completedAnalysis();
     $id = $analysis->id ?? throw new LogicException('Отсутствует анализ.');
     app(PrepareWorkoutAnalysisContext::class)->handle(new PrepareWorkoutAnalysisContextInput($analysis->deviations()->snapshot->userId->value, $id->value));
-    $model = WorkoutAnalysisModel::query()->with('deviations.attempts')->findOrFail($id->value);
+    $model = WorkoutAnalysisModel::query()->with('deviations.attempts', 'ai.attempts')->findOrFail($id->value);
     $model->fill($missingVersion ? ['context_version' => null] : ['context' => null]);
 
     expect(fn () => app(WorkoutAnalysisMapper::class)->toDomain($model))

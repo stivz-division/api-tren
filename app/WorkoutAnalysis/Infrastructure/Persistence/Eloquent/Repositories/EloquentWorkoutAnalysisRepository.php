@@ -2,17 +2,20 @@
 
 namespace App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Repositories;
 
+use App\WorkoutAnalysis\Domain\Entities\WorkoutAIAnalysis;
 use App\WorkoutAnalysis\Domain\Entities\WorkoutAnalysis;
 use App\WorkoutAnalysis\Domain\Entities\WorkoutDeviationAnalysis;
 use App\WorkoutAnalysis\Domain\Enums\AnalysisStatus;
 use App\WorkoutAnalysis\Domain\Repositories\WorkoutAnalysisRepository;
 use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisAttempt;
 use App\WorkoutAnalysis\Domain\ValueObjects\UserId;
+use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAIResult;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAnalysisId;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\AnalysisContextSnapshotCodec;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\AnalysisPayload;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\CompletedWorkoutSnapshotCodec;
+use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\WorkoutAIResultCodec;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\WorkoutAnalysisMapper;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\WorkoutDeviationResultCodec;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Models\WorkoutAnalysisModel;
@@ -28,6 +31,7 @@ final readonly class EloquentWorkoutAnalysisRepository implements WorkoutAnalysi
         private CompletedWorkoutSnapshotCodec $snapshotCodec,
         private WorkoutDeviationResultCodec $resultCodec,
         private AnalysisContextSnapshotCodec $contextCodec,
+        private WorkoutAIResultCodec $aiResultCodec,
         private DatabaseManager $database,
     ) {}
 
@@ -62,7 +66,11 @@ final readonly class EloquentWorkoutAnalysisRepository implements WorkoutAnalysi
             $stage = $model->deviations()->create($this->stageAttributes($deviations));
             $stage->attempts()->createMany(array_map($this->attemptAttributes(...), $deviations->attempts()));
 
-            return $this->mapper->toDomain($model->load('deviations.attempts'));
+            if ($analysis->ai() !== null) {
+                $this->saveAI($model, null, $analysis->ai());
+            }
+
+            return $this->mapper->toDomain($model->load('deviations.attempts', 'ai.attempts'));
         });
     }
 
@@ -76,7 +84,7 @@ final readonly class EloquentWorkoutAnalysisRepository implements WorkoutAnalysi
             $model = WorkoutAnalysisModel::query()->whereKey($id->value)
                 ->where('user_id', $deviations->snapshot->userId->value)->lockForUpdate()->first()
                 ?? throw new LogicException('Нельзя сохранить несуществующий анализ тренировки.');
-            $model->load('deviations.attempts');
+            $model->load('deviations.attempts', 'ai.attempts');
             $persistedAnalysis = $this->mapper->toDomain($model);
             $persisted = $persistedAnalysis->deviations();
             $context = $analysis->context();
@@ -93,6 +101,7 @@ final readonly class EloquentWorkoutAnalysisRepository implements WorkoutAnalysi
                 throw new LogicException('Нельзя изменить сохранённый снимок тренировки.');
             }
             $this->assertHistoryUnchanged($persisted, $deviations);
+            $this->saveAI($model, $persistedAnalysis->ai(), $analysis->ai());
             $stage = $model->deviations ?? throw new LogicException('Отсутствует этап сравнения тренировки.');
             $attemptModels = $stage->attempts->keyBy('number');
             foreach ($deviations->attempts() as $attempt) {
@@ -110,13 +119,44 @@ final readonly class EloquentWorkoutAnalysisRepository implements WorkoutAnalysi
         });
     }
 
+    private function saveAI(WorkoutAnalysisModel $model, ?WorkoutAIAnalysis $persisted, ?WorkoutAIAnalysis $incoming): void
+    {
+        if ($persisted !== null && $incoming === null) {
+            throw new LogicException('Нельзя удалить сохранённый этап ИИ.');
+        }
+        if ($incoming === null) {
+            return;
+        }
+        if ($persisted === null) {
+            $stage = $model->ai()->create($this->stageAttributes($incoming));
+            $stage->attempts()->createMany(array_map($this->attemptAttributes(...), $incoming->attempts()));
+
+            return;
+        }
+        $this->assertHistoryUnchanged($persisted, $incoming);
+        $stage = $model->ai ?? throw new LogicException('Отсутствует этап ИИ.');
+        $attempts = $stage->attempts->keyBy('number');
+        foreach ($incoming->attempts() as $attempt) {
+            $stored = $attempts->get($attempt->number);
+            if ($stored === null) {
+                $stage->attempts()->create($this->attemptAttributes($attempt));
+            } elseif ($stored->finished_at === null) {
+                $stored->fill($this->attemptAttributes($attempt));
+                if ($stored->isDirty()) {
+                    $stored->save();
+                }
+            }
+        }
+        $stage->update($this->stageAttributes($incoming));
+    }
+
     private function find(string $column, int $value, UserId $userId): ?WorkoutAnalysis
     {
         return $this->database->transaction(function () use ($column, $value, $userId): ?WorkoutAnalysis {
             $model = WorkoutAnalysisModel::query()->where($column, $value)->where('user_id', $userId->value)
                 ->sharedLock()->first();
 
-            return $model === null ? null : $this->mapper->toDomain($model->load('deviations.attempts'));
+            return $model === null ? null : $this->mapper->toDomain($model->load('deviations.attempts', 'ai.attempts'));
         });
     }
 
@@ -127,7 +167,7 @@ final readonly class EloquentWorkoutAnalysisRepository implements WorkoutAnalysi
         }
     }
 
-    private function assertHistoryUnchanged(WorkoutDeviationAnalysis $persisted, WorkoutDeviationAnalysis $incoming): void
+    private function assertHistoryUnchanged(WorkoutDeviationAnalysis|WorkoutAIAnalysis $persisted, WorkoutDeviationAnalysis|WorkoutAIAnalysis $incoming): void
     {
         $attempts = $incoming->attempts();
         foreach ($persisted->attempts() as $index => $previous) {
@@ -150,17 +190,18 @@ final readonly class EloquentWorkoutAnalysisRepository implements WorkoutAnalysi
     }
 
     /** @return array{status: string, current_attempt_number: int, scheduled_at: DateTimeImmutable, expires_at: DateTimeImmutable|null, result: array<string, mixed>|null, result_version: int|null} */
-    private function stageAttributes(WorkoutDeviationAnalysis $stage): array
+    private function stageAttributes(WorkoutDeviationAnalysis|WorkoutAIAnalysis $stage): array
     {
         $attempt = $stage->currentAttempt();
+        $result = $stage->result;
 
         return [
             'status' => $stage->status()->value,
             'current_attempt_number' => $attempt->number,
             'scheduled_at' => $attempt->scheduledAt->setTimezone(new DateTimeZone('UTC')),
             'expires_at' => $this->utc($attempt->expiresAt),
-            'result' => $stage->result === null ? null : $this->resultCodec->encode($stage->result),
-            'result_version' => $stage->result === null ? null : WorkoutDeviationResultCodec::VERSION,
+            'result' => $result === null ? null : ($result instanceof WorkoutAIResult ? $this->aiResultCodec->encode($result) : $this->resultCodec->encode($result)),
+            'result_version' => $stage->result === null ? null : ($stage instanceof WorkoutAIAnalysis ? WorkoutAIResultCodec::VERSION : WorkoutDeviationResultCodec::VERSION),
         ];
     }
 

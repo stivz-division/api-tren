@@ -1942,6 +1942,87 @@
                 ],
                 "title": "UpdateTrainingProgramRequest"
             },
+            "WorkoutAIAnalysisResource": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "pending",
+                            "processing",
+                            "completed",
+                            "failed"
+                        ]
+                    },
+                    "failure_code": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "provider_unavailable",
+                            "provider_rejected",
+                            "ai_refused",
+                            "invalid_ai_response",
+                            "incomplete_ai_response",
+                            "context_preparation_failed",
+                            "worker_failed",
+                            "attempt_timed_out",
+                            null
+                        ]
+                    },
+                    "result": {
+                        "type": [
+                            "object",
+                            "null"
+                        ],
+                        "properties": {
+                            "current_workout": {
+                                "type": "string"
+                            },
+                            "history": {
+                                "type": "string"
+                            },
+                            "evidence": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "analysis_id": {
+                                            "type": "integer"
+                                        },
+                                        "workout_session_id": {
+                                            "type": "integer"
+                                        },
+                                        "exercise_id": {
+                                            "type": [
+                                                "integer",
+                                                "null"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "analysis_id",
+                                        "workout_session_id",
+                                        "exercise_id"
+                                    ]
+                                }
+                            }
+                        },
+                        "required": [
+                            "current_workout",
+                            "history",
+                            "evidence"
+                        ]
+                    }
+                },
+                "required": [
+                    "status",
+                    "failure_code",
+                    "result"
+                ],
+                "title": "WorkoutAIAnalysisResource"
+            },
             "WorkoutAnalysisResource": {
                 "type": "object",
                 "properties": {
@@ -1982,6 +2063,16 @@
                                 "type": "null"
                             }
                         ]
+                    },
+                    "ai_analysis": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/WorkoutAIAnalysisResource"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 },
                 "required": [
@@ -1989,7 +2080,8 @@
                     "workout_session_id",
                     "status",
                     "failure_code",
-                    "result"
+                    "result",
+                    "ai_analysis"
                 ],
                 "title": "WorkoutAnalysisResource"
             },

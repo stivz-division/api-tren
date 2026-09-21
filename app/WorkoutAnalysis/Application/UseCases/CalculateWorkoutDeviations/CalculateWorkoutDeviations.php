@@ -2,8 +2,10 @@
 
 namespace App\WorkoutAnalysis\Application\UseCases\CalculateWorkoutDeviations;
 
+use App\WorkoutAnalysis\Application\DTO\AIAnalysisTask;
 use App\WorkoutAnalysis\Application\DTO\WorkoutDeviationAnalysisDTO;
 use App\WorkoutAnalysis\Application\Exceptions\WorkoutAnalysisNotFound;
+use App\WorkoutAnalysis\Application\Gateways\AIAnalysisTaskScheduler;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisClock;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisTransaction;
 use App\WorkoutAnalysis\Application\Policies\AnalysisExecutionPolicy;
@@ -27,6 +29,7 @@ final readonly class CalculateWorkoutDeviations
         private AnalysisTransaction $transaction,
         private AnalysisExecutionPolicy $policy,
         private RecordWorkoutDeviationFailure $failures,
+        private AIAnalysisTaskScheduler $aiScheduler,
     ) {}
 
     /** Точка входа worker: вызывается без внешней транзакции, чтобы зафиксировать захват до расчёта. */
@@ -70,7 +73,10 @@ final readonly class CalculateWorkoutDeviations
         return $this->transaction->execute($userId, function () use ($input, $analysisId, $userId, $result): WorkoutDeviationAnalysisDTO {
             $analysis = $this->analyses->findForUser($analysisId, $userId) ?? throw new WorkoutAnalysisNotFound;
             if ($analysis->completeDeviationAttempt($input->attemptNumber, $result, $this->clock->now())) {
+                $analysis->scheduleAI($this->clock->now());
                 $this->analyses->save($analysis);
+                $task = AIAnalysisTask::fromDomain($analysis);
+                $this->transaction->afterCommit(fn () => $this->aiScheduler->schedule($task));
             }
 
             return WorkoutDeviationAnalysisDTO::fromDomain($analysis);

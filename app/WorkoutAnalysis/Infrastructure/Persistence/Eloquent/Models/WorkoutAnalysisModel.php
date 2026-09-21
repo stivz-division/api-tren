@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property int|null $context_version
  * @property int $snapshot_version
  * @property-read WorkoutDeviationAnalysisModel|null $deviations
+ * @property-read WorkoutAIAnalysisModel|null $ai
  */
 #[Fillable([
     'user_id',
@@ -34,6 +35,12 @@ final class WorkoutAnalysisModel extends Model
     public function deviations(): HasOne
     {
         return $this->hasOne(WorkoutDeviationAnalysisModel::class, 'workout_analysis_id');
+    }
+
+    /** @return HasOne<WorkoutAIAnalysisModel, $this> */
+    public function ai(): HasOne
+    {
+        return $this->hasOne(WorkoutAIAnalysisModel::class, 'workout_analysis_id');
     }
 
     /** @return array<string, string> */

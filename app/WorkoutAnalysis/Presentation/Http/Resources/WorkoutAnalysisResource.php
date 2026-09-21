@@ -25,6 +25,7 @@ final class WorkoutAnalysisResource extends JsonResource
             /** @var 'calculation_failed'|'arithmetic_overflow'|'worker_failed'|'attempt_timed_out'|null */
             'failure_code' => $value->status === 'failed' ? $attempt->failureCode : null,
             'result' => $value->result === null ? null : new WorkoutDeviationResultResource($value->result),
+            'ai_analysis' => $value->ai === null ? null : new WorkoutAIAnalysisResource($value->ai),
         ];
     }
 }
