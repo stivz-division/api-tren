@@ -5,6 +5,7 @@ namespace Tests\Support\WorkoutAnalysis;
 use App\WorkoutAnalysis\Domain\Collections\ExercisePerformanceCollection;
 use App\WorkoutAnalysis\Domain\Collections\SetSnapshotCollection;
 use App\WorkoutAnalysis\Domain\Enums\ExerciseCompletionStatus;
+use App\WorkoutAnalysis\Domain\Services\WorkoutDeviationCalculator;
 use App\WorkoutAnalysis\Domain\ValueObjects\CompletedWorkoutSnapshot;
 use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseId;
 use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseName;
@@ -16,12 +17,30 @@ use App\WorkoutAnalysis\Domain\ValueObjects\SetPosition;
 use App\WorkoutAnalysis\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutAnalysis\Domain\ValueObjects\UserId;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkingWeight;
+use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutDeviationResult;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutSetSnapshot;
 use DateTimeImmutable;
 
 final class WorkoutAnalysisFixture
 {
+    public static function result(
+        int $sessionId = 51,
+        int $programId = 11,
+        int $userId = 7,
+        string $completedAt = '2026-09-15 12:00:00+00:00',
+        ?ExercisePerformanceSnapshot $exercise = null,
+    ): WorkoutDeviationResult {
+        return (new WorkoutDeviationCalculator)->calculate(new CompletedWorkoutSnapshot(
+            new WorkoutSessionId($sessionId),
+            new UserId($userId),
+            new TrainingProgramId($programId),
+            new ProgramName('Грудь и трицепс'),
+            new DateTimeImmutable($completedAt),
+            new ExercisePerformanceCollection($exercise ?? self::exercise()),
+        ));
+    }
+
     public static function workout(ExercisePerformanceSnapshot ...$exercises): CompletedWorkoutSnapshot
     {
         return new CompletedWorkoutSnapshot(

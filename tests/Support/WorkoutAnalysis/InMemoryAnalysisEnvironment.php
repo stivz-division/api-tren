@@ -6,10 +6,13 @@ use App\WorkoutAnalysis\Application\DTO\CompletedWorkoutData;
 use App\WorkoutAnalysis\Application\DTO\DeviationTask;
 use App\WorkoutAnalysis\Application\DTO\ExercisePerformanceData;
 use App\WorkoutAnalysis\Application\DTO\SetSnapshotData;
+use App\WorkoutAnalysis\Application\DTO\WorkoutHistoryData;
+use App\WorkoutAnalysis\Application\DTO\WorkoutHistoryQuery;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisClock;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisTaskScheduler;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisTransaction;
 use App\WorkoutAnalysis\Application\Gateways\CompletedWorkoutProvider;
+use App\WorkoutAnalysis\Application\Gateways\WorkoutHistoryProvider;
 use App\WorkoutAnalysis\Domain\Entities\WorkoutAnalysis;
 use App\WorkoutAnalysis\Domain\Repositories\WorkoutAnalysisRepository;
 use App\WorkoutAnalysis\Domain\ValueObjects\CompletedWorkoutSnapshot;
@@ -36,6 +39,16 @@ final class InMemoryAnalysisEnvironment implements AnalysisClock, AnalysisTaskSc
 
     public ?CompletedWorkoutData $source;
 
+    public WorkoutHistoryData $history;
+
+    /** @var list<WorkoutHistoryQuery> */
+    public array $historyQueries = [];
+
+    public bool $failHistoryRead = false;
+
+    /** @var (Closure(): void)|null */
+    public ?Closure $onHistoryRead = null;
+
     public DateTimeImmutable $time;
 
     public bool $failDispatch = false;
@@ -54,6 +67,7 @@ final class InMemoryAnalysisEnvironment implements AnalysisClock, AnalysisTaskSc
     {
         $this->time = new DateTimeImmutable('2026-09-17 12:00:00+00:00');
         $this->source = self::data($snapshot ?? WorkoutAnalysisFixture::workout(WorkoutAnalysisFixture::exercise()));
+        $this->history = new WorkoutHistoryData([], []);
     }
 
     public static function data(CompletedWorkoutSnapshot $snapshot, string $status = 'completed'): CompletedWorkoutData
@@ -102,6 +116,30 @@ final class InMemoryAnalysisEnvironment implements AnalysisClock, AnalysisTaskSc
         $analysis = $this->analyses[$id->value] ?? null;
 
         return $analysis?->deviations()->snapshot->userId->value === $userId->value ? clone $analysis : null;
+    }
+
+    public function historyProvider(): WorkoutHistoryProvider
+    {
+        return new class($this) implements WorkoutHistoryProvider
+        {
+            public function __construct(private InMemoryAnalysisEnvironment $environment) {}
+
+            public function read(WorkoutHistoryQuery $query): WorkoutHistoryData
+            {
+                if ($this->environment->depth === 0) {
+                    throw new LogicException('History read outside transaction.');
+                }
+                $this->environment->historyQueries[] = $query;
+                if ($this->environment->failHistoryRead) {
+                    throw new RuntimeException('History unavailable.');
+                }
+                if ($this->environment->onHistoryRead !== null) {
+                    ($this->environment->onHistoryRead)();
+                }
+
+                return $this->environment->history;
+            }
+        };
     }
 
     public function findForSession(WorkoutSessionId $sessionId, UserId $userId): ?WorkoutAnalysis

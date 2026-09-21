@@ -20,6 +20,7 @@ final readonly class WorkoutAnalysisMapper
     public function __construct(
         private CompletedWorkoutSnapshotCodec $snapshotCodec,
         private WorkoutDeviationResultCodec $resultCodec,
+        private AnalysisContextSnapshotCodec $contextCodec,
     ) {}
 
     public function toDomain(WorkoutAnalysisModel $model): WorkoutAnalysis
@@ -52,7 +53,16 @@ final readonly class WorkoutAnalysisMapper
             throw new UnexpectedValueException('Состояние этапа сравнения не соответствует истории попыток.');
         }
 
-        return WorkoutAnalysis::restore(new WorkoutAnalysisId($model->id), $deviations);
+        if (($model->context === null) !== ($model->context_version === null)) {
+            throw new UnexpectedValueException('Версия контекста не согласована с наличием снимка.');
+        }
+        $context = $model->context === null ? null : $this->contextCodec->decode(
+            $model->context,
+            $model->context_version ?? throw new UnexpectedValueException('Отсутствует версия контекста.'),
+            $result ?? throw new UnexpectedValueException('Контекст сохранён без готового результата сравнения.'),
+        );
+
+        return WorkoutAnalysis::restore(new WorkoutAnalysisId($model->id), $deviations, $context);
     }
 
     public function attemptToDomain(WorkoutDeviationAttemptModel $model): AnalysisAttempt

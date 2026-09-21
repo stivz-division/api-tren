@@ -11,6 +11,10 @@ return [
         'pending_recovery_delay_seconds' => 60,
         'retry_delays_seconds' => [5, 30],
     ],
+    'history' => [
+        'same_program_limit' => 20,
+        'other_programs_limit' => 20,
+    ],
     'recovery' => [
         'batch_size' => 100,
         'max_candidates' => 1000,

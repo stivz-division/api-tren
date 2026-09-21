@@ -6,9 +6,12 @@ use App\WorkoutAnalysis\Application\Gateways\AnalysisClock;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisTaskScheduler;
 use App\WorkoutAnalysis\Application\Gateways\AnalysisTransaction;
 use App\WorkoutAnalysis\Application\Gateways\CompletedWorkoutProvider;
+use App\WorkoutAnalysis\Application\Gateways\WorkoutHistoryProvider;
 use App\WorkoutAnalysis\Application\Policies\AnalysisExecutionPolicy;
+use App\WorkoutAnalysis\Application\Policies\AnalysisHistoryPolicy;
 use App\WorkoutAnalysis\Domain\Repositories\WorkoutAnalysisRepository;
 use App\WorkoutAnalysis\Infrastructure\Integrations\WorkoutExecution\EloquentCompletedWorkoutProvider;
+use App\WorkoutAnalysis\Infrastructure\Integrations\WorkoutExecution\EloquentWorkoutHistoryProvider;
 use App\WorkoutAnalysis\Infrastructure\Integrations\WorkoutExecution\InitializeAnalysisOnWorkoutCompletion;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Repositories\EloquentWorkoutAnalysisRepository;
 use App\WorkoutAnalysis\Infrastructure\Queue\LaravelAnalysisTaskScheduler;
@@ -25,6 +28,11 @@ final class WorkoutAnalysisServiceProvider extends ServiceProvider
     {
         $this->app->bind(WorkoutAnalysisRepository::class, EloquentWorkoutAnalysisRepository::class);
         $this->app->bind(CompletedWorkoutProvider::class, EloquentCompletedWorkoutProvider::class);
+        $this->app->bind(WorkoutHistoryProvider::class, EloquentWorkoutHistoryProvider::class);
+        $this->app->singleton(AnalysisHistoryPolicy::class, static fn (): AnalysisHistoryPolicy => new AnalysisHistoryPolicy(
+            (int) config('workout-analysis.history.same_program_limit', 20),
+            (int) config('workout-analysis.history.other_programs_limit', 20),
+        ));
         $this->app->bind(AnalysisTransaction::class, DatabaseAnalysisTransaction::class);
         $this->app->bind(AnalysisTaskScheduler::class, LaravelAnalysisTaskScheduler::class);
         $this->app->singleton(AnalysisClock::class, UtcAnalysisClock::class);

@@ -1,12 +1,16 @@
 <?php
 
+use App\WorkoutAnalysis\Domain\Collections\WorkoutHistoryWindow;
 use App\WorkoutAnalysis\Domain\Entities\WorkoutAnalysis;
 use App\WorkoutAnalysis\Domain\Entities\WorkoutDeviationAnalysis;
 use App\WorkoutAnalysis\Domain\Enums\AnalysisFailureCode;
 use App\WorkoutAnalysis\Domain\Enums\AnalysisStatus;
+use App\WorkoutAnalysis\Domain\Exceptions\InvalidAnalysisContext;
 use App\WorkoutAnalysis\Domain\Exceptions\InvalidAnalysisTransition;
 use App\WorkoutAnalysis\Domain\Services\WorkoutDeviationCalculator;
 use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisAttempt;
+use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisContextSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAnalysisId;
 use Tests\Support\WorkoutAnalysis\WorkoutAnalysisFixture as Fixture;
 
 $now = static fn (): DateTimeImmutable => new DateTimeImmutable('2026-09-17 12:00:00+00:00');
@@ -142,4 +146,76 @@ it('does not mutate the running attempt when retry scheduling is invalid', funct
         ->toThrow(InvalidArgumentException::class);
     expect($aggregate->deviations()->status())->toBe(AnalysisStatus::Processing);
     expect($aggregate->deviations()->attempts())->toHaveCount(1);
+});
+
+$completedAnalysis = static function () use ($analysis, $now): WorkoutAnalysis {
+    $aggregate = $analysis();
+    $result = (new WorkoutDeviationCalculator)->calculate($aggregate->deviations()->snapshot);
+    $aggregate->startDeviationAttempt(1, $now(), $now()->modify('+2 minutes'));
+    $aggregate->completeDeviationAttempt(1, $result, $now()->modify('+1 second'));
+
+    return $aggregate;
+};
+$context = static fn (): AnalysisContextSnapshot => new AnalysisContextSnapshot(
+    Fixture::result(), new WorkoutHistoryWindow, new WorkoutHistoryWindow, $now()->modify('+1 minute'),
+);
+
+it('attaches context once and reuses it for an equivalent repeated request', function () use ($completedAnalysis, $context) {
+    $aggregate = $completedAnalysis();
+    $snapshot = $context();
+
+    expect($aggregate->attachContext($snapshot))->toBeTrue();
+    expect($aggregate->attachContext($context()))->toBeFalse();
+    expect($aggregate->context())->toBe($snapshot);
+});
+
+it('rejects context before deviations are completed without changing the stage', function () use ($analysis, $context) {
+    $aggregate = $analysis();
+
+    expect(fn () => $aggregate->attachContext($context()))->toThrow(InvalidAnalysisContext::class);
+    expect($aggregate->context())->toBeNull();
+    expect($aggregate->deviations()->status())->toBe(AnalysisStatus::Pending);
+});
+
+it('rejects context calculated from different current workout data', function () use ($completedAnalysis, $now) {
+    $aggregate = $completedAnalysis();
+    $other = new AnalysisContextSnapshot(Fixture::result(exercise: Fixture::exercise(actual: [[8, 50_000]])), new WorkoutHistoryWindow, new WorkoutHistoryWindow, $now()->modify('+1 minute'));
+
+    expect(fn () => $aggregate->attachContext($other))->toThrow(InvalidAnalysisContext::class);
+    expect($aggregate->context())->toBeNull();
+});
+
+it('rejects a capture timestamp before deviations were completed', function () use ($completedAnalysis, $now) {
+    $aggregate = $completedAnalysis();
+    $early = new AnalysisContextSnapshot(Fixture::result(), new WorkoutHistoryWindow, new WorkoutHistoryWindow, $now());
+
+    expect(fn () => $aggregate->attachContext($early))->toThrow(InvalidAnalysisContext::class);
+    expect($aggregate->context())->toBeNull();
+});
+
+it('refuses to replace an attached context with a later capture', function () use ($completedAnalysis, $context, $now) {
+    $aggregate = $completedAnalysis();
+    $original = $context();
+    $aggregate->attachContext($original);
+    $later = new AnalysisContextSnapshot(Fixture::result(), new WorkoutHistoryWindow, new WorkoutHistoryWindow, $now()->modify('+2 minutes'));
+
+    expect(fn () => $aggregate->attachContext($later))->toThrow(InvalidAnalysisContext::class);
+    expect($aggregate->context())->toBe($original);
+});
+
+it('restores a context through the same invariants and keeps it when cloning', function () use ($completedAnalysis, $context) {
+    $original = $completedAnalysis();
+    $snapshot = $context();
+
+    $restored = WorkoutAnalysis::restore(new WorkoutAnalysisId(9), $original->deviations(), $snapshot);
+    $cloned = clone $restored;
+
+    expect($restored->context())->toBe($snapshot);
+    expect($cloned->attachContext($context()))->toBeFalse();
+    expect($cloned->context())->toBe($snapshot);
+});
+
+it('rejects restoring a context on an unfinished analysis', function () use ($analysis, $context) {
+    expect(fn () => WorkoutAnalysis::restore(new WorkoutAnalysisId(9), $analysis()->deviations(), $context()))
+        ->toThrow(InvalidAnalysisContext::class);
 });

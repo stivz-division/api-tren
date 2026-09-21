@@ -3,6 +3,9 @@
 namespace App\WorkoutAnalysis\Domain\Entities;
 
 use App\WorkoutAnalysis\Domain\Enums\AnalysisFailureCode;
+use App\WorkoutAnalysis\Domain\Enums\AnalysisStatus;
+use App\WorkoutAnalysis\Domain\Exceptions\InvalidAnalysisContext;
+use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisContextSnapshot;
 use App\WorkoutAnalysis\Domain\ValueObjects\CompletedWorkoutSnapshot;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAnalysisId;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutDeviationResult;
@@ -10,6 +13,8 @@ use DateTimeImmutable;
 
 final class WorkoutAnalysis
 {
+    private ?AnalysisContextSnapshot $context = null;
+
     private function __construct(
         public private(set) readonly ?WorkoutAnalysisId $id,
         private WorkoutDeviationAnalysis $deviations,
@@ -20,14 +25,49 @@ final class WorkoutAnalysis
         return new self(null, WorkoutDeviationAnalysis::pending($snapshot, $now));
     }
 
-    public static function restore(WorkoutAnalysisId $id, WorkoutDeviationAnalysis $deviations): self
+    public static function restore(WorkoutAnalysisId $id, WorkoutDeviationAnalysis $deviations, ?AnalysisContextSnapshot $context = null): self
     {
-        return new self($id, clone $deviations);
+        $analysis = new self($id, clone $deviations);
+        if ($context !== null) {
+            $analysis->attachContext($context);
+        }
+
+        return $analysis;
     }
 
     public function deviations(): WorkoutDeviationAnalysis
     {
         return clone $this->deviations;
+    }
+
+    public function context(): ?AnalysisContextSnapshot
+    {
+        return $this->context;
+    }
+
+    public function attachContext(AnalysisContextSnapshot $context): bool
+    {
+        $finishedAt = $this->deviations->currentAttempt()->finishedAt;
+        if (
+            $this->deviations->status() !== AnalysisStatus::Completed
+            || $this->deviations->result != $context->currentWorkout
+            || $finishedAt === null
+            || $context->capturedAt < $finishedAt
+        ) {
+            throw new InvalidAnalysisContext('Контекст должен соответствовать готовым отклонениям текущего анализа.');
+        }
+
+        if ($this->context !== null) {
+            if ($this->context != $context) {
+                throw new InvalidAnalysisContext('Зафиксированный контекст анализа нельзя заменить.');
+            }
+
+            return false;
+        }
+
+        $this->context = $context;
+
+        return true;
     }
 
     public function startDeviationAttempt(int $number, DateTimeImmutable $now, DateTimeImmutable $expiresAt): bool

@@ -90,7 +90,7 @@ final class CompletedWorkoutSnapshotCodec
         ];
     }
 
-    private function decodeSets(mixed $payload): SetSnapshotCollection
+    public function decodeSets(mixed $payload): SetSnapshotCollection
     {
         $sets = [];
         foreach (AnalysisPayload::list($payload) as $item) {

@@ -2,11 +2,14 @@
 
 namespace Tests\Support\WorkoutAnalysis;
 
+use App\WorkoutAnalysis\Application\Factories\AnalysisContextSnapshotFactory;
 use App\WorkoutAnalysis\Application\Factories\CompletedWorkoutSnapshotFactory;
 use App\WorkoutAnalysis\Application\Policies\AnalysisExecutionPolicy;
+use App\WorkoutAnalysis\Application\Policies\AnalysisHistoryPolicy;
 use App\WorkoutAnalysis\Application\UseCases\CalculateWorkoutDeviations\CalculateWorkoutDeviations;
 use App\WorkoutAnalysis\Application\UseCases\GetWorkoutDeviationAnalysis\GetWorkoutDeviationAnalysis;
 use App\WorkoutAnalysis\Application\UseCases\InitializeWorkoutAnalysis\InitializeWorkoutAnalysis;
+use App\WorkoutAnalysis\Application\UseCases\PrepareWorkoutAnalysisContext\PrepareWorkoutAnalysisContext;
 use App\WorkoutAnalysis\Application\UseCases\RecordWorkoutDeviationFailure\RecordWorkoutDeviationFailure;
 use App\WorkoutAnalysis\Application\UseCases\RecoverWorkoutAnalysis\RecoverWorkoutAnalysis;
 use App\WorkoutAnalysis\Application\UseCases\RetryWorkoutDeviationAnalysis\RetryWorkoutDeviationAnalysis;
@@ -44,5 +47,14 @@ final readonly class AnalysisUseCases
     public function get(): GetWorkoutDeviationAnalysis
     {
         return new GetWorkoutDeviationAnalysis($this->env);
+    }
+
+    public function prepareContext(AnalysisHistoryPolicy $policy = new AnalysisHistoryPolicy): PrepareWorkoutAnalysisContext
+    {
+        return new PrepareWorkoutAnalysisContext(
+            $this->env, $this->env->historyProvider(),
+            new AnalysisContextSnapshotFactory(new CompletedWorkoutSnapshotFactory, new WorkoutDeviationCalculator),
+            $this->env, $this->env, $policy,
+        );
     }
 }

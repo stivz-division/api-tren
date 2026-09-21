@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property int $user_id
  * @property int $workout_session_id
  * @property array<string, mixed> $snapshot
+ * @property array<string, mixed>|null $context
+ * @property int|null $context_version
  * @property int $snapshot_version
  * @property-read WorkoutDeviationAnalysisModel|null $deviations
  */
@@ -19,6 +21,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'workout_session_id',
     'snapshot',
     'snapshot_version',
+    'context',
+    'context_version',
 ])]
 final class WorkoutAnalysisModel extends Model
 {
@@ -41,6 +45,8 @@ final class WorkoutAnalysisModel extends Model
             'workout_session_id' => 'integer',
             'snapshot' => 'array',
             'snapshot_version' => 'integer',
+            'context' => 'array',
+            'context_version' => 'integer',
         ];
     }
 }

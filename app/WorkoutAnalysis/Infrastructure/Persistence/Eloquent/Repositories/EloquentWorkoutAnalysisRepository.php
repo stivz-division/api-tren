@@ -10,6 +10,7 @@ use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisAttempt;
 use App\WorkoutAnalysis\Domain\ValueObjects\UserId;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAnalysisId;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutSessionId;
+use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\AnalysisContextSnapshotCodec;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\AnalysisPayload;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\CompletedWorkoutSnapshotCodec;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\WorkoutAnalysisMapper;
@@ -26,6 +27,7 @@ final readonly class EloquentWorkoutAnalysisRepository implements WorkoutAnalysi
         private WorkoutAnalysisMapper $mapper,
         private CompletedWorkoutSnapshotCodec $snapshotCodec,
         private WorkoutDeviationResultCodec $resultCodec,
+        private AnalysisContextSnapshotCodec $contextCodec,
         private DatabaseManager $database,
     ) {}
 
@@ -54,6 +56,8 @@ final readonly class EloquentWorkoutAnalysisRepository implements WorkoutAnalysi
                 'workout_session_id' => $snapshot->workoutSessionId->value,
                 'snapshot' => $this->snapshotCodec->encode($snapshot),
                 'snapshot_version' => CompletedWorkoutSnapshotCodec::VERSION,
+                'context' => $analysis->context() === null ? null : $this->contextCodec->encode($analysis->context()),
+                'context_version' => $analysis->context() === null ? null : AnalysisContextSnapshotCodec::VERSION,
             ]);
             $stage = $model->deviations()->create($this->stageAttributes($deviations));
             $stage->attempts()->createMany(array_map($this->attemptAttributes(...), $deviations->attempts()));
@@ -68,12 +72,23 @@ final readonly class EloquentWorkoutAnalysisRepository implements WorkoutAnalysi
         $id = $analysis->id ?? throw new LogicException('Нельзя сохранить анализ без идентификатора.');
         $deviations = $analysis->deviations();
 
-        $this->database->transaction(function () use ($id, $deviations): void {
+        $this->database->transaction(function () use ($id, $deviations, $analysis): void {
             $model = WorkoutAnalysisModel::query()->whereKey($id->value)
                 ->where('user_id', $deviations->snapshot->userId->value)->lockForUpdate()->first()
                 ?? throw new LogicException('Нельзя сохранить несуществующий анализ тренировки.');
             $model->load('deviations.attempts');
-            $persisted = $this->mapper->toDomain($model)->deviations();
+            $persistedAnalysis = $this->mapper->toDomain($model);
+            $persisted = $persistedAnalysis->deviations();
+            $context = $analysis->context();
+            if ($persistedAnalysis->context() !== null && $persistedAnalysis->context() != $context) {
+                throw new LogicException('Нельзя заменить или удалить сохранённый контекст анализа.');
+            }
+            if ($persistedAnalysis->context() === null && $context !== null) {
+                $model->update([
+                    'context' => $this->contextCodec->encode($context),
+                    'context_version' => AnalysisContextSnapshotCodec::VERSION,
+                ]);
+            }
             if (! AnalysisPayload::equals($model->snapshot, $this->snapshotCodec->encode($deviations->snapshot))) {
                 throw new LogicException('Нельзя изменить сохранённый снимок тренировки.');
             }
