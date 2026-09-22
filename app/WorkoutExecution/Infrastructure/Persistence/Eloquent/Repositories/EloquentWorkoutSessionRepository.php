@@ -6,6 +6,7 @@ use App\WorkoutAnalysis\Infrastructure\Integrations\WorkoutPlanning\Recommendati
 use App\WorkoutExecution\Domain\Collections\WorkoutSetCollection;
 use App\WorkoutExecution\Domain\Entities\WorkoutExercise;
 use App\WorkoutExecution\Domain\Entities\WorkoutSession;
+use App\WorkoutExecution\Domain\Enums\WorkoutSessionStatus;
 use App\WorkoutExecution\Domain\Exceptions\ActiveWorkoutSessionAlreadyExists;
 use App\WorkoutExecution\Domain\Repositories\WorkoutSessionRepository;
 use App\WorkoutExecution\Domain\ValueObjects\Repetitions;
@@ -79,7 +80,6 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
                     'cancelled_at' => $this->nullableToUtc($session->cancelledAt),
                 ]);
 
-                $this->invalidator->expireProgram($session->userId->value, $session->programSnapshot->trainingProgramId->value, $session->startedAt);
                 foreach ($session->workoutExercises() as $exercise) {
                     $exerciseModel = $model->workoutExercises()->create(
                         $this->exerciseAttributes($exercise),
@@ -150,6 +150,14 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
                 'completed_at' => $this->nullableToUtc($session->completedAt),
                 'cancelled_at' => $this->nullableToUtc($session->cancelledAt),
             ]);
+
+            if ($model->wasChanged('status') && $session->status === WorkoutSessionStatus::Completed) {
+                $this->invalidator->expireProgram(
+                    $session->userId->value,
+                    $session->programSnapshot->trainingProgramId->value,
+                    $session->completedAt ?? throw new LogicException('У завершённой тренировки должно быть время завершения.'),
+                );
+            }
 
             WorkoutSetModel::query()
                 ->whereIn('workout_exercise_id', $exerciseModels->modelKeys())

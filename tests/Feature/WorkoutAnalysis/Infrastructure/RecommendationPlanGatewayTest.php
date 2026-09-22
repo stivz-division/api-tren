@@ -14,8 +14,13 @@ use App\WorkoutAnalysis\Domain\ValueObjects\RecommendationProposal;
 use App\WorkoutAnalysis\Domain\ValueObjects\UserId;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Models\WorkoutRecommendationModel;
+use App\WorkoutExecution\Application\UseCases\CancelWorkoutSession\CancelWorkoutSession;
+use App\WorkoutExecution\Application\UseCases\CancelWorkoutSession\CancelWorkoutSessionInput;
 use App\WorkoutExecution\Application\UseCases\StartWorkoutSession\StartWorkoutSession;
 use App\WorkoutExecution\Application\UseCases\StartWorkoutSession\StartWorkoutSessionInput;
+use App\WorkoutExecution\Domain\Repositories\WorkoutSessionRepository;
+use App\WorkoutExecution\Domain\ValueObjects\UserId as ExecutionUserId;
+use App\WorkoutExecution\Domain\ValueObjects\WorkoutSessionId as ExecutionSessionId;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutSessionModel;
 use App\WorkoutPlanning\Domain\Collections\PlannedExerciseCollection;
 use App\WorkoutPlanning\Domain\Collections\PlannedSetCollection;
@@ -103,15 +108,62 @@ it('rejects independently and counts all completed program history beyond contex
     expect($f['gateway']->act($f['user']->id, $f['items'][1]->id, 'apply')->status)->toBe('applied');
 });
 
-it('expires recommendations on a new start while snapshotting the applied plan', function () use ($fixture): void {
+it('keeps recommendations on a new start while snapshotting the applied plan', function () use ($fixture): void {
     $f = $fixture();
     $f['gateway']->act($f['user']->id, $f['items'][0]->id, 'apply');
     $started = app(StartWorkoutSession::class)->handle(new StartWorkoutSessionInput($f['user']->id, $f['program']->id));
-    expect($f['items'][1]->refresh()->status)->toBe('expired');
-    expect($f['gateway']->act($f['user']->id, $f['items'][1]->id, 'apply')->status)->toBe('expired');
+    expect($f['items'][1]->refresh()->status)->toBe('proposed');
+    expect($f['gateway']->act($f['user']->id, $f['items'][1]->id, 'apply')->status)->toBe('applied');
     $session = WorkoutSessionModel::query()->findOrFail($started->id);
     expect($session->workoutExercises()->firstOrFail()->plannedSets()->firstOrFail()->working_weight_grams)->toBe(52500);
+    expect($session->workoutExercises()->where('exercise_id', $f['exercises'][1]->id)->firstOrFail()->plannedSets()->firstOrFail()->working_weight_grams)->toBe(50000);
 });
+
+it('keeps recommendations applicable after cancelling a newer session', function () use ($fixture): void {
+    $f = $fixture();
+    $started = app(StartWorkoutSession::class)->handle(new StartWorkoutSessionInput($f['user']->id, $f['program']->id));
+    app(CancelWorkoutSession::class)->handle(new CancelWorkoutSessionInput($f['user']->id, $started->id));
+
+    $result = $f['gateway']->act($f['user']->id, $f['items'][0]->id, 'apply');
+
+    expect($result->status)->toBe('applied');
+    expect($f['program']->plannedExercises()->firstOrFail()->plannedSets()->firstOrFail()->working_weight_grams)->toBe(52500);
+});
+
+it('expires pending recommendations when a newer session completes', function () use ($fixture): void {
+    $f = $fixture();
+    $started = app(StartWorkoutSession::class)->handle(new StartWorkoutSessionInput($f['user']->id, $f['program']->id));
+    $repository = app(WorkoutSessionRepository::class);
+    $session = $repository->findForUser(new ExecutionSessionId($started->id), new ExecutionUserId($f['user']->id)) ?? throw new LogicException('Missing session.');
+    foreach ($session->workoutExercises() as $exercise) {
+        $session->skipExercise($exercise->snapshot->exerciseId);
+    }
+    $completedAt = $session->startedAt->modify('+1 hour');
+    $session->complete($completedAt);
+
+    $repository->save($session);
+
+    foreach ($f['items'] as $item) {
+        expect($item->refresh()->status)->toBe('expired');
+        expect($item->expired_at)->toEqual($completedAt);
+    }
+    expect($f['gateway']->act($f['user']->id, $f['items'][0]->id, 'apply')->status)->toBe('expired');
+    expect($f['program']->plannedExercises()->firstOrFail()->plannedSets()->firstOrFail()->working_weight_grams)->toBe(50000);
+});
+
+it('captures exercises unless a newer session is completed', function (string $status, int $exerciseCount) use ($fixture): void {
+    $f = $fixture();
+    WorkoutSessionModel::query()->create([
+        'user_id' => $f['user']->id, 'training_program_id' => $f['program']->id, 'training_program_name' => 'Программа', 'scheduled_weekday' => 1,
+        'status' => $status, 'started_at' => now()->subHour(),
+        'completed_at' => $status === 'completed' ? now() : null,
+        'cancelled_at' => $status === 'cancelled' ? now() : null,
+    ]);
+
+    $context = DB::transaction(fn () => $f['gateway']->capture($f['analysis']));
+
+    expect($context['exercises'])->toHaveCount($exerciseCount);
+})->with(['cancelled' => ['cancelled', 2], 'in progress' => ['in_progress', 2], 'completed' => ['completed', 0]]);
 
 it('expires only manually changed targets and retains the barrier after restoring their old sets', function () use ($fixture): void {
     $f = $fixture();
@@ -144,13 +196,20 @@ it('retains history when a program is deleted and expires pending decisions', fu
     expect($f['gateway']->recommendations($f['user']->id, ($f['analysis']->id ?? throw new LogicException('Missing analysis ID.'))->value))->toHaveCount(2);
 });
 
-it('expires late generated suggestions after a newer session started', function () use ($fixture): void {
+it('expires late generated suggestions only after a newer session completed', function (string $status, string $recommendationStatus) use ($fixture): void {
     $f = $fixture();
     WorkoutRecommendationModel::query()->delete();
-    app(StartWorkoutSession::class)->handle(new StartWorkoutSessionInput($f['user']->id, $f['program']->id));
+    WorkoutSessionModel::query()->create([
+        'user_id' => $f['user']->id, 'training_program_id' => $f['program']->id, 'training_program_name' => 'Программа', 'scheduled_weekday' => 1,
+        'status' => $status, 'started_at' => now()->subHour(),
+        'completed_at' => $status === 'completed' ? now() : null,
+        'cancelled_at' => $status === 'cancelled' ? now() : null,
+    ]);
+
     DB::transaction(fn () => $f['gateway']->store($f['analysis'], $f['context'], $f['proposals'], now()->toDateTimeImmutable()));
-    expect(WorkoutRecommendationModel::query()->where('status', 'expired')->count())->toBe(2);
-});
+
+    expect(WorkoutRecommendationModel::query()->pluck('status')->all())->toBe([$recommendationStatus, $recommendationStatus]);
+})->with(['cancelled' => ['cancelled', 'proposed'], 'in progress' => ['in_progress', 'proposed'], 'completed' => ['completed', 'expired']]);
 
 it('applies sequential replacements from one batch without rerunning the program cooldown', function () use ($fixture): void {
     $f = $fixture();

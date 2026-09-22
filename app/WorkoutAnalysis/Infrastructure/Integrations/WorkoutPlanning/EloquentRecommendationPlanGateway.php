@@ -49,7 +49,7 @@ final readonly class EloquentRecommendationPlanGateway implements Recommendation
         $userId = $snapshot->userId->value;
         $context = ['program_id' => $programId, 'exercises' => [], 'catalog' => []];
         $program = TrainingProgramModel::query()->whereKey($programId)->where('user_id', $userId)->with('plannedExercises.plannedSets')->first();
-        if ($program === null || $this->hasNewStart($userId, $programId, $snapshot->workoutSessionId->value)) {
+        if ($program === null || $this->hasNewerCompletedSession($userId, $programId, $snapshot->workoutSessionId->value)) {
             return $context;
         }
         $history = [];
@@ -172,7 +172,7 @@ final readonly class EloquentRecommendationPlanGateway implements Recommendation
 
     private function currentTarget(WorkoutRecommendationModel $item): ?PlannedExerciseModel
     {
-        if ($this->hasNewStart($item->user_id, $item->training_program_id, $item->workout_session_id)
+        if ($this->hasNewerCompletedSession($item->user_id, $item->training_program_id, $item->workout_session_id)
             || ! TrainingProgramModel::query()->whereKey($item->training_program_id)->where('user_id', $item->user_id)->exists()) {
             return null;
         }
@@ -199,9 +199,10 @@ final readonly class EloquentRecommendationPlanGateway implements Recommendation
         }
     }
 
-    private function hasNewStart(int $userId, int $programId, int $sourceSessionId): bool
+    private function hasNewerCompletedSession(int $userId, int $programId, int $sourceSessionId): bool
     {
-        return WorkoutSessionModel::query()->where('user_id', $userId)->where('training_program_id', $programId)->where('id', '>', $sourceSessionId)->exists();
+        return WorkoutSessionModel::query()->where('user_id', $userId)->where('training_program_id', $programId)
+            ->where('status', 'completed')->where('id', '>', $sourceSessionId)->exists();
     }
 
     /** @return object{revision:int|string,changed_at:string}|null */
