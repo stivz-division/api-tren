@@ -18,8 +18,10 @@ use Tests\Support\WorkoutAnalysis\WorkoutAnalysisFixture as Fixture;
 it('enforces exact eligibility boundaries', function (int $successes, int $failures, int $replacement, int $rejection, bool $successful, string $type, bool $allowed): void {
     expect((new RecommendationEligibility(10, $successes, $failures, $replacement, $rejection, $successful))->allows($type))->toBe($allowed);
 })->with([
-    [2, 0, 0, 4, true, 'progression', false], [3, 0, 0, 4, true, 'progression', true],
-    [0, 1, 0, 4, false, 'adjustment', false], [0, 2, 0, 4, false, 'adjustment', true],
+    [0, 0, 0, 4, false, 'progression', false], [1, 0, 0, 4, true, 'progression', true],
+    [3, 0, 0, 4, false, 'progression', false],
+    [0, 0, 0, 4, false, 'adjustment', false], [0, 1, 0, 4, false, 'adjustment', true],
+    [0, 2, 0, 4, true, 'adjustment', false],
     [0, 2, 0, 3, false, 'replacement', false], [0, 2, 0, 4, false, 'replacement', true],
     [1, 0, 27, 4, true, 'replacement', false], [1, 0, 28, 4, true, 'replacement', true],
     [0, 1, 28, 4, false, 'replacement', false],
@@ -60,8 +62,8 @@ it('breaks streaks on changed plans and manual change back barriers and counts s
     expect($calculator->calculate(10, $skipped->plannedSets, [Fixture::workout($skipped)])->failures)->toBe(1);
 });
 
-$analysis = static fn (): WorkoutAIResult => new WorkoutAIResult(new WorkoutAnalysisId(91), new AnalysisContextSnapshot(
-    Fixture::result(), new WorkoutHistoryWindow(1), new WorkoutHistoryWindow(1), new DateTimeImmutable('2026-09-15T12:01:00Z')),
+$analysis = static fn (?ExercisePerformanceSnapshot $exercise = null): WorkoutAIResult => new WorkoutAIResult(new WorkoutAnalysisId(91), new AnalysisContextSnapshot(
+    Fixture::result(exercise: $exercise), new WorkoutHistoryWindow(1), new WorkoutHistoryWindow(1), new DateTimeImmutable('2026-09-15T12:01:00Z')),
     'Выполнено.', 'Достаточно истории.', 'model', 'response', 1, 1);
 $program = static fn (): array => ['program_id' => 11, 'exercises' => [['exercise_id' => 10,
     'sets' => [['position' => 1, 'repetitions' => 10, 'working_weight_grams' => 50000]],
@@ -75,6 +77,39 @@ it('admits grounded eligible whole proposals', function () use ($analysis, $prog
     expect($result->proposals)->toHaveCount(1);
     expect($result->rejectedReasons)->toBe([]);
 });
+
+it('admits weight changes from the first performed workout without history', function (bool $successful) use ($analysis, $program): void {
+    $context = $program();
+    $context['exercises'][0]['successes'] = $successful ? 1 : 0;
+    $context['exercises'][0]['failures'] = $successful ? 0 : 1;
+    $context['exercises'][0]['currently_successful'] = $successful;
+    $exercise = Fixture::exercise(actual: [[$successful ? 12 : 8, 50000]]);
+    $proposal = new RecommendationProposal(10, $successful ? 'progression' : 'adjustment', null,
+        Fixture::sets([[10, $successful ? 52500 : 47500]]), 'Результат первой тренировки.',
+        new AnalysisEvidenceReference(new WorkoutAnalysisId(91), new WorkoutSessionId(51)));
+
+    $result = (new RecommendationAdmissionPolicy)->admit(new RecommendationBatch([$proposal]), $analysis($exercise), $context);
+
+    expect($result->proposals)->toBe([$proposal]);
+    expect($result->rejectedReasons)->toBe([]);
+})->with(['completed plan' => true, 'repetition deficit' => false]);
+
+it('rejects weight changes based on stale counters without matching current performance', function (ExercisePerformanceSnapshot $exercise, string $type) use ($analysis, $program, $proposal): void {
+    $context = $program();
+    $context['exercises'][0]['currently_successful'] = $type === 'progression';
+
+    $result = (new RecommendationAdmissionPolicy)->admit(new RecommendationBatch([$proposal($type)]), $analysis($exercise), $context);
+
+    expect($result->proposals)->toBe([]);
+    expect($result->rejectedReasons)->toBe(['10:eligibility_not_met']);
+})->with([
+    'current deficit blocks progression' => [fn () => Fixture::exercise(actual: [[8, 50000]]), 'progression'],
+    'current success blocks adjustment' => [fn () => Fixture::exercise(), 'adjustment'],
+    'skip does not justify progression' => [fn () => Fixture::exercise(actual: [], status: ExerciseCompletionStatus::Skipped), 'progression'],
+    'skip does not justify a weight adjustment' => [fn () => Fixture::exercise(actual: [], status: ExerciseCompletionStatus::Skipped), 'adjustment'],
+    'exercise absent from workout' => [fn () => Fixture::exercise(id: 99), 'progression'],
+    'program changed after workout' => [fn () => Fixture::exercise(planned: [[8, 50000]]), 'progression'],
+]);
 
 it('rejects conflicting exercise proposals together and rejects invented evidence or existing replacement target', function () use ($analysis, $program, $proposal): void {
     $policy = new RecommendationAdmissionPolicy;
@@ -98,7 +133,7 @@ it('admits a whole mixed adjustment after two failures without requiring progres
     $proposal = new RecommendationProposal(10, 'adjustment', null, $sets, 'Уменьшить повторы с повышением веса.',
         new AnalysisEvidenceReference(new WorkoutAnalysisId(91), new WorkoutSessionId(51)));
 
-    $result = (new RecommendationAdmissionPolicy)->admit(new RecommendationBatch([$proposal]), $analysis(), $context);
+    $result = (new RecommendationAdmissionPolicy)->admit(new RecommendationBatch([$proposal]), $analysis(Fixture::exercise(actual: [[8, 50000]])), $context);
 
     expect($result->rejectedReasons)->toBe([]);
     expect($result->proposals)->toBe([$proposal]);

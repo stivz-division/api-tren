@@ -49,25 +49,25 @@ $response = static fn (): array => [
         ['type' => 'reasoning', 'summary' => []],
         ['type' => 'message', 'role' => 'assistant', 'status' => 'completed', 'content' => [
             ['type' => 'output_text', 'text' => json_encode([
-                'current_workout' => 'План выполнен.', 'history' => 'Нагрузка сопоставима с предыдущей тренировкой.',
-                'evidence' => [['workout_session_id' => 51, 'exercise_id' => 10], ['workout_session_id' => 50, 'exercise_id' => null]],
+                'current_workout_fact_ids' => ['current:summary', 'current:exercise:10'],
+                'history_fact_ids' => ['history:50:summary', 'history:50:exercise:10'],
             ], JSON_THROW_ON_ERROR)],
         ]],
     ],
 ];
 
-it('returns a grounded conclusion and sends complete context without account identifiers', function () use ($context, $response): void {
+it('renders selected facts with server units and evidence without publishing model prose', function () use ($context, $response): void {
     Http::fake(['https://api.openai.com/v1/responses' => Http::response($response())]);
 
     $result = app(OpenAIAnalysisProvider::class)->analyze(new WorkoutAnalysisId(91), $context());
 
-    expect($result->conclusion->currentWorkout)->toBe('План выполнен.');
-    expect($result->conclusion->history)->toBe('Нагрузка сопоставима с предыдущей тренировкой.');
+    expect($result->conclusion->currentWorkout)->toContain('Тренировка №51', '10 × 50 кг', 'Без отклонений');
+    expect($result->conclusion->history)->toContain('№50 → №51', 'Тренировка №49');
     expect($result->conclusion->evidence[0]->analysisId->value)->toBe(91);
     expect($result->model)->toBe('actual-model-version');
     expect($result->responseId)->toBe('resp_test');
-    expect($result->promptVersion)->toBe(1);
-    expect($result->schemaVersion)->toBe(1);
+    expect($result->promptVersion)->toBe(2);
+    expect($result->schemaVersion)->toBe(2);
     Http::assertSent(function (Request $request): bool {
         expect($request->method())->toBe('POST');
         expect($request->hasHeader('Authorization', 'Bearer secret-test-key'))->toBeTrue();
@@ -82,19 +82,12 @@ it('returns a grounded conclusion and sends complete context without account ide
             throw new LogicException('Отсутствует контекст запроса.');
         }
         $input = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
-        expect(data_get($input, 'current_workout.snapshot.workout_session_id'))->toBe(51);
-        expect(data_get($input, 'current_workout.snapshot.exercises.0.planned_sets.0.working_weight_grams'))->toBe(50000);
-        expect(data_get($input, 'current_workout.deviations.sets.actual'))->toBe(1);
-        expect(data_get($input, 'same_program.limit'))->toBe(3);
-        expect(data_get($input, 'same_program.entries.0.conclusion.current_workout'))->toBe('Предыдущее заключение.');
-        expect(data_get($input, 'same_program.entries.0.recommendations.items.0.status'))->toBe('applied');
-        expect(data_get($input, 'same_program.entries.0.recommendations.items.0.original_sets.0.working_weight_grams'))->toBe(50000);
-        expect(data_get($input, 'same_program.entries.0.recommendations.items.0.proposed_sets.0.working_weight_grams'))->toBe(52500);
-        expect(data_get($input, 'same_program.entries.0.recommendations.items.0.applied_at'))->toBe('2026-09-14T12:01:00.000000Z');
-        expect(data_get($input, 'same_program.entries.0.deviations.sets.actual'))->toBe(1);
-        expect(data_get($input, 'other_programs.limit'))->toBe(7);
-        expect(data_get($input, 'other_programs.entries.0.snapshot.workout_session_id'))->toBe(49);
-        expect($request->body())->not->toContain('user_id', 'secret-test-key', 'telegram_id', 'actually_used');
+        expect(data_get($input, 'current_workout_session_id'))->toBe(51);
+        expect(data_get($input, 'facts.current_workout.current:exercise:10.text'))->toContain('10 × 50 кг');
+        expect(data_get($input, 'facts.history.history:50:exercise:10.text'))->toContain('№50', '№51');
+        expect(data_get($input, 'facts.history.history:49:summary.text'))->toContain('Другая программа');
+        expect(data_get($request->data(), 'text.format.schema.properties.current_workout_fact_ids.items.type'))->toBe('string');
+        expect($request->body())->not->toContain('user_id', 'secret-test-key', 'telegram_id', 'actually_used', 'Предыдущее заключение.');
 
         return true;
     });
@@ -110,6 +103,11 @@ it('rejects an invalid structured conclusion', function (string $json) use ($con
         ->toThrow(new AIProviderFailed(AnalysisFailureCode::InvalidAIResponse));
     Http::assertSentCount(1);
 })->with([
+    'history fact in current workout' => '{"current_workout_fact_ids":["history:50:exercise:10"],"history_fact_ids":["history:50:summary"]}',
+    'invented fact id' => '{"current_workout_fact_ids":["current:exercise:999"],"history_fact_ids":["history:50:summary"]}',
+    'empty current facts' => '{"current_workout_fact_ids":[],"history_fact_ids":["history:50:summary"]}',
+    'current fact in history' => '{"current_workout_fact_ids":["current:summary"],"history_fact_ids":["current:exercise:10"]}',
+    'free text alongside facts' => '{"current_workout_fact_ids":["current:summary"],"history_fact_ids":["history:50:summary"],"current_workout":"Бабочка: один подход."}',
     'broken json' => '{',
     'missing history' => '{"current_workout":"ok","evidence":[]}',
     'blank text' => '{"current_workout":" ","history":"ok","evidence":[]}',

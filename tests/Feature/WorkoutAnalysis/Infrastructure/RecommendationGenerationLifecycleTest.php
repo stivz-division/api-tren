@@ -29,9 +29,9 @@ use Tests\Support\WorkoutAnalysis\WorkoutAnalysisFixture as Fixture;
 
 uses(DatabaseMigrations::class);
 
-$pendingRecommendations = static function (bool $empty = false, int $sessionId = 51): WorkoutAnalysis {
+$pendingRecommendations = static function (bool $empty = false, int $sessionId = 51, bool $successful = true): WorkoutAnalysis {
     $user = User::factory()->create();
-    $result = Fixture::result(sessionId: $sessionId, userId: $user->id);
+    $result = Fixture::result(sessionId: $sessionId, userId: $user->id, exercise: Fixture::exercise(actual: [[$successful ? 10 : 8, 50000]]));
     $now = now()->subMinute()->toDateTimeImmutable();
     $analysis = WorkoutAnalysis::initialize($result->snapshot, $now);
     $analysis->startDeviationAttempt(1, $now, $now->modify('+30 seconds'));
@@ -41,7 +41,8 @@ $pendingRecommendations = static function (bool $empty = false, int $sessionId =
     $analysis->attachContext($context);
     $analysis->attachRecommendationContext(['program_id' => 11, 'exercises' => $empty ? [] : [[
         'exercise_id' => 10, 'sets' => [['position' => 1, 'repetitions' => 10, 'working_weight_grams' => 50000]],
-        'revision' => 0, 'successes' => 3, 'failures' => 0, 'completed_since_replacement' => 10, 'completed_since_rejection' => 10, 'currently_successful' => true,
+        'revision' => 0, 'successes' => $successful ? 1 : 0, 'failures' => $successful ? 0 : 1,
+        'completed_since_replacement' => 1, 'completed_since_rejection' => 4, 'currently_successful' => $successful,
     ]], 'catalog' => []]);
     $analysis = DB::transaction(fn () => app(WorkoutAnalysisRepository::class)->add($analysis));
     $id = $analysis->id ?? throw new LogicException;
@@ -56,7 +57,7 @@ $recommendationInput = static fn (WorkoutAnalysis $analysis, int $attempt = 1): 
     $analysis->deviations()->snapshot->userId->value, ($analysis->id ?? throw new LogicException)->value, $attempt,
 );
 $proposal = static fn (WorkoutAnalysis $analysis, int $exerciseId = 10): RecommendationProposal => new RecommendationProposal(
-    $exerciseId, 'progression', null, Fixture::sets([[10, 52500]]), 'Три успешные тренировки.',
+    $exerciseId, 'progression', null, Fixture::sets([[10, 52500]]), 'План выполнен в первой тренировке.',
     new AnalysisEvidenceReference($analysis->id ?? throw new LogicException, $analysis->deviations()->snapshot->workoutSessionId, new ExerciseId(10)),
 );
 
@@ -77,6 +78,24 @@ it('persists an admitted batch once and keeps provider calls outside transaction
     $stored = app(WorkoutAnalysisRepository::class)->findForUser($analysis->id ?? throw new LogicException, $analysis->deviations()->snapshot->userId);
     expect($stored?->overallStatus())->toBe(AnalysisStatus::Completed);
     expect($stored?->recommendations()?->result)->toEqual($batch);
+});
+
+it('publishes a weight adjustment after the first workout falls below the plan', function () use ($pendingRecommendations, $recommendationInput): void {
+    Queue::fake();
+    $analysis = $pendingRecommendations(successful: false);
+    $proposal = new RecommendationProposal(10, 'adjustment', null, Fixture::sets([[10, 47500]]), 'В первой тренировке выполнено 8 повторений из 10.',
+        new AnalysisEvidenceReference($analysis->id ?? throw new LogicException, $analysis->deviations()->snapshot->workoutSessionId, new ExerciseId(10)));
+    $this->mock(RecommendationProvider::class)->shouldReceive('generate')->once()->andReturn(new RecommendationBatch([$proposal]));
+
+    $stage = app(GenerateWorkoutRecommendations::class)->handle($recommendationInput($analysis));
+
+    expect($stage?->status())->toBe(AnalysisStatus::Completed);
+    $this->assertDatabaseHas('workout_recommendations', ['exercise_id' => 10, 'change_type' => 'adjustment']);
+    Sanctum::actingAs(User::query()->findOrFail($analysis->deviations()->snapshot->userId->value));
+    $this->getJson('/api/workout-sessions/51/analysis')->assertOk()
+        ->assertJsonPath('data.overall_status', 'completed')
+        ->assertJsonPath('data.recommendation_generation.items.0.proposed_sets.0.working_weight_kg', 47.5);
+    Queue::assertNothingPushed();
 });
 
 it('completes unavailable programs without contacting the provider', function () use ($pendingRecommendations, $recommendationInput): void {

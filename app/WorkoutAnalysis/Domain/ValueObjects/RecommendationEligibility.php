@@ -22,8 +22,8 @@ final readonly class RecommendationEligibility
     public function allows(string $changeType): bool
     {
         return match ($changeType) {
-            'progression' => $this->successes >= 3,
-            'adjustment' => $this->failures >= 2,
+            'progression' => $this->successes >= 1 && $this->currentlySuccessful,
+            'adjustment' => $this->failures >= 1 && ! $this->currentlySuccessful,
             'replacement' => ($this->failures >= 2 || ($this->completedSinceReplacement >= 28 && $this->currentlySuccessful))
                 && $this->completedSinceRejection >= 4,
             default => false,

@@ -3,6 +3,7 @@
 use App\WorkoutAnalysis\Application\Exceptions\AIProviderFailed;
 use App\WorkoutAnalysis\Domain\Collections\WorkoutHistoryWindow;
 use App\WorkoutAnalysis\Domain\Enums\AnalysisFailureCode;
+use App\WorkoutAnalysis\Domain\Enums\ExerciseCompletionStatus;
 use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisContextSnapshot;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAIResult;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAnalysisId;
@@ -63,6 +64,41 @@ it('preserves an explicit reason for no recommendations', function () use ($anal
     expect(app(OpenAIRecommendationProvider::class)->generate($analysis(), $program())->noChangeReason)->toBe('Сохранить план.');
     Http::assertSentCount(1);
 });
+
+it('sends server allowed change types for the first workout and preserves the frozen program', function (string $performance, array $allowed) use ($program, $response): void {
+    $exercise = Fixture::exercise(actual: $performance === 'skipped' ? [] : [[$performance === 'success' ? 12 : 8, 50000]],
+        status: $performance === 'skipped' ? ExerciseCompletionStatus::Skipped : ExerciseCompletionStatus::Completed);
+    $analysis = new WorkoutAIResult(new WorkoutAnalysisId(91), new AnalysisContextSnapshot(
+        Fixture::result(exercise: $exercise), new WorkoutHistoryWindow, new WorkoutHistoryWindow, new DateTimeImmutable('2026-09-15T12:01:00Z')),
+        'Первая тренировка.', 'Истории нет.', 'model', 'response', 1, 1);
+    $context = $program();
+    $context['exercises'][0]['successes'] = $performance === 'success' ? 1 : 0;
+    $context['exercises'][0]['failures'] = $performance === 'success' ? 0 : 1;
+    $context['exercises'][0]['currently_successful'] = $performance === 'success';
+    $context['exercises'][0]['completed_since_replacement'] = 1;
+    Http::fake(['https://api.openai.com/v1/responses' => Http::response($response(['proposals' => [], 'no_change_reason' => 'Сохранить вес.']))]);
+
+    $batch = app(OpenAIRecommendationProvider::class)->generate($analysis, $context);
+
+    expect($batch->promptVersion)->toBe(2);
+    expect($context['exercises'][0])->not->toHaveKey('allowed_change_types');
+    Http::assertSent(function (Request $request) use ($allowed): bool {
+        $content = data_get($request->data(), 'input.0.content');
+        if (! is_string($content)) {
+            throw new LogicException('Missing request context.');
+        }
+        $input = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+        expect(data_get($input, 'program.exercises.0.allowed_change_types'))->toBe($allowed);
+        expect(data_get($input, 'program.exercises.0.sets.0.working_weight_grams'))->toBe(50000);
+
+        return true;
+    });
+    Http::assertSentCount(1);
+})->with([
+    'first success' => ['success', ['progression']],
+    'first deficit' => ['deficit', ['adjustment']],
+    'skipped exercise' => ['skipped', []],
+]);
 
 it('rejects invalid proposal payloads without coercing values', function (string $case) use ($analysis, $program, $proposal, $response): void {
     $item = $proposal();

@@ -15,6 +15,7 @@ use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutSessionId;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use JsonException;
 use stdClass;
@@ -22,12 +23,13 @@ use UnexpectedValueException;
 
 final readonly class OpenAIAnalysisProvider implements AIProvider
 {
-    public const int SCHEMA_VERSION = 1;
+    public const int SCHEMA_VERSION = 2;
 
     public function __construct(
         private Factory $http,
         private Repository $config,
         private WorkoutAnalysisPrompt $prompt,
+        private WorkoutAnalysisFacts $facts,
     ) {}
 
     public function analyze(WorkoutAnalysisId $analysisId, AnalysisContextSnapshot $context): WorkoutAIResult
@@ -39,8 +41,12 @@ final readonly class OpenAIAnalysisProvider implements AIProvider
         $maxOutputTokens = $this->configuredPositiveInteger('openai.max_output_tokens');
         $maxInputBytes = $this->configuredPositiveInteger('max_input_bytes');
 
+        $catalog = $this->facts->catalog($context);
         try {
-            $input = $this->prompt->context($context);
+            $input = json_encode([
+                'current_workout_session_id' => $context->currentWorkout->snapshot->workoutSessionId->value,
+                'facts' => $catalog,
+            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         } catch (JsonException) {
             throw new AIProviderFailed(AnalysisFailureCode::ProviderRejected);
         }
@@ -113,26 +119,22 @@ final readonly class OpenAIAnalysisProvider implements AIProvider
                 throw new UnexpectedValueException;
             }
             $result = $this->object(json_decode($texts[0], flags: JSON_THROW_ON_ERROR));
-            $this->requireKeys($result, ['current_workout', 'history', 'evidence']);
+            $this->requireKeys($result, ['current_workout_fact_ids', 'history_fact_ids']);
+            $rendered = $this->facts->render($catalog, $result->current_workout_fact_ids, $result->history_fact_ids);
             $evidence = [];
-            foreach ($this->list($result->evidence) as $item) {
-                $reference = $this->object($item);
-                $this->requireKeys($reference, ['workout_session_id', 'exercise_id']);
-                if (! is_int($reference->workout_session_id) || ($reference->exercise_id !== null && ! is_int($reference->exercise_id))) {
-                    throw new UnexpectedValueException;
-                }
+            foreach ($rendered['evidence'] as $reference) {
                 $evidence[] = new AnalysisEvidenceReference(
                     $analysisId,
-                    new WorkoutSessionId($reference->workout_session_id),
-                    $reference->exercise_id === null ? null : new ExerciseId($reference->exercise_id),
+                    new WorkoutSessionId($reference['workout_session_id']),
+                    $reference['exercise_id'] === null ? null : new ExerciseId($reference['exercise_id']),
                 );
             }
 
             return new WorkoutAIResult(
                 $analysisId,
                 $context,
-                $this->nonblankString($result->current_workout),
-                $this->nonblankString($result->history),
+                $rendered['current_workout'],
+                $rendered['history'],
                 $this->nonblankString($data->model ?? null),
                 $this->nonblankString($data->id ?? null),
                 WorkoutAnalysisPrompt::VERSION,
@@ -140,6 +142,11 @@ final readonly class OpenAIAnalysisProvider implements AIProvider
                 ...$evidence,
             );
         } catch (JsonException|UnexpectedValueException|InvalidArgumentException|InvalidAnalysisContext) {
+            Log::warning('[FIX:workout-analysis-facts] Rejected invalid fact selection or response.', [
+                'analysis_id' => $analysisId->value,
+                'prompt_version' => WorkoutAnalysisPrompt::VERSION,
+                'schema_version' => self::SCHEMA_VERSION,
+            ]);
             throw new AIProviderFailed(AnalysisFailureCode::InvalidAIResponse);
         }
     }
@@ -169,19 +176,12 @@ final readonly class OpenAIAnalysisProvider implements AIProvider
         return [
             'type' => 'object',
             'additionalProperties' => false,
-            'required' => ['current_workout', 'history', 'evidence'],
+            'required' => ['current_workout_fact_ids', 'history_fact_ids'],
             'properties' => [
-                'current_workout' => ['type' => 'string'],
-                'history' => ['type' => 'string'],
-                'evidence' => ['type' => 'array', 'items' => [
-                    'type' => 'object',
-                    'additionalProperties' => false,
-                    'required' => ['workout_session_id', 'exercise_id'],
-                    'properties' => [
-                        'workout_session_id' => ['type' => 'integer'],
-                        'exercise_id' => ['type' => ['integer', 'null']],
-                    ],
-                ]],
+                'current_workout_fact_ids' => ['type' => 'array', 'minItems' => 1,
+                    'items' => ['type' => 'string']],
+                'history_fact_ids' => ['type' => 'array', 'minItems' => 1,
+                    'items' => ['type' => 'string']],
             ],
         ];
     }
