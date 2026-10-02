@@ -13,6 +13,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'discipline_id',
     'code',
     'name',
+    'description',
+    'video_url',
 ])]
 class Exercise extends Model
 {

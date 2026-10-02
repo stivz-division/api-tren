@@ -19,6 +19,8 @@ it('returns exercises ordered by name with only catalog fields', function (): vo
     $benchPress = Exercise::factory()->create([
         'code' => 'bench-press',
         'name' => 'Bench Press',
+        'description' => 'Мышцы: грудные и трицепсы. Техника: опустите гриф к груди и выжмите вверх.',
+        'video_url' => 'https://www.youtube.com/watch?v=rT7DgCr-3pg',
     ]);
     $deadlift = Exercise::factory()->create([
         'code' => 'deadlift',
@@ -36,16 +38,22 @@ it('returns exercises ordered by name with only catalog fields', function (): vo
                     'id' => $benchPress->id,
                     'code' => 'bench-press',
                     'name' => 'Bench Press',
+                    'description' => 'Мышцы: грудные и трицепсы. Техника: опустите гриф к груди и выжмите вверх.',
+                    'video_url' => 'https://www.youtube.com/watch?v=rT7DgCr-3pg',
                 ],
                 [
                     'id' => $deadlift->id,
                     'code' => 'deadlift',
                     'name' => 'Deadlift',
+                    'description' => null,
+                    'video_url' => null,
                 ],
                 [
                     'id' => $squat->id,
                     'code' => 'squat',
                     'name' => 'Squat',
+                    'description' => null,
+                    'video_url' => null,
                 ],
             ],
         ]);

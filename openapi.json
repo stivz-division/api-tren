@@ -691,12 +691,26 @@
                                                     },
                                                     "name": {
                                                         "type": "string"
+                                                    },
+                                                    "description": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                                    },
+                                                    "video_url": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
                                                     }
                                                 },
                                                 "required": [
                                                     "id",
                                                     "code",
-                                                    "name"
+                                                    "name",
+                                                    "description",
+                                                    "video_url"
                                                 ]
                                             }
                                         }
@@ -846,6 +860,97 @@
                                     },
                                     "required": [
                                         "code",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/exercises/{exercise}": {
+            "get": {
+                "operationId": "exercises.show",
+                "tags": [
+                    "GetExercise"
+                ],
+                "parameters": [
+                    {
+                        "name": "exercise",
+                        "in": "path",
+                        "required": true,
+                        "description": "The exercise ID",
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer"
+                                                },
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "name": {
+                                                    "type": "string"
+                                                },
+                                                "description": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "video_url": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "id",
+                                                "code",
+                                                "name",
+                                                "description",
+                                                "video_url"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "404": {
+                        "description": "Exercise not found.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
                                         "message"
                                     ]
                                 }
@@ -1732,6 +1837,18 @@
                             "null"
                         ],
                         "format": "date-time"
+                    },
+                    "description": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "video_url": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 },
                 "required": [
@@ -1740,7 +1857,9 @@
                     "code",
                     "name",
                     "created_at",
-                    "updated_at"
+                    "updated_at",
+                    "description",
+                    "video_url"
                 ],
                 "title": "Exercise"
             },

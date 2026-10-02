@@ -8,6 +8,7 @@ $openApiHttpMethods = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head
 $expectedOpenApiOperations = [
     'DELETE /training-programs/{trainingProgramId}',
     'GET /exercises',
+    'GET /exercises/{exercise}',
     'GET /training-programs',
     'GET /training-programs/weekdays/{weekday}',
     'GET /workout-sessions',
@@ -377,6 +378,7 @@ it('documents route parameters without internal request fields', function () use
     $openApiStringAt,
 ): void {
     $operationsWithPathParameters = [
+        'GET /exercises/{exercise}' => ['exercise'],
         'GET /workout-sessions/{workoutSessionId}/analysis' => ['workoutSessionId'],
         'POST /workout-recommendations/{recommendationId}/apply' => ['recommendationId'],
         'POST /workout-recommendations/{recommendationId}/reject' => ['recommendationId'],
@@ -392,6 +394,7 @@ it('documents route parameters without internal request fields', function () use
     ];
     $operationsWithoutRequestBodies = [
         'GET /exercises',
+        'GET /exercises/{exercise}',
         'GET /training-programs',
         'DELETE /training-programs/{trainingProgramId}',
         'GET /training-programs/weekdays/{weekday}',
@@ -456,6 +459,7 @@ it('documents success resources and API error responses', function () use (
         'POST /workout-recommendations/{recommendationId}/apply' => ['200', '401', '404', '409', '422'],
         'POST /workout-recommendations/{recommendationId}/reject' => ['200', '401', '404', '409', '422'],
         'GET /exercises' => ['200', '401'],
+        'GET /exercises/{exercise}' => ['200', '401', '404'],
         'GET /training-programs' => ['200', '401'],
         'POST /training-programs' => ['201', '401', '409', '422'],
         'PUT /training-programs/{trainingProgramId}' => ['200', '401', '404', '409', '422'],
@@ -504,8 +508,21 @@ it('documents success resources and API error responses', function () use (
             $document,
             $openApiArrayAt($exerciseListSchema, ['properties', 'data', 'items']),
         );
-        $this->assertSame(['id', 'code', 'name'], array_keys($openApiArrayAt($exerciseSchema, ['properties'])));
-        $this->assertSame(['id', 'code', 'name'], $openApiArrayAt($exerciseSchema, ['required']));
+        $this->assertSame(['id', 'code', 'name', 'description', 'video_url'], array_keys($openApiArrayAt($exerciseSchema, ['properties'])));
+        $this->assertSame(['id', 'code', 'name', 'description', 'video_url'], $openApiArrayAt($exerciseSchema, ['required']));
+        $this->assertSame(['string', 'null'], $openApiArrayAt($exerciseSchema, ['properties', 'description', 'type']));
+        $this->assertSame(['string', 'null'], $openApiArrayAt($exerciseSchema, ['properties', 'video_url', 'type']));
+
+        $exerciseDetailSchema = $openApiResponseSchema(
+            $document,
+            $openApiOperation($document, 'GET', '/exercises/{exercise}'),
+            '200',
+        );
+        $this->assertSame(['data'], $openApiArrayAt($exerciseDetailSchema, ['required']));
+        $this->assertSame(
+            $exerciseSchema,
+            $resolveOpenApiReference($document, $openApiArrayAt($exerciseDetailSchema, ['properties', 'data'])),
+        );
 
         $integerResourceProperties = [
             'WorkoutAnalysisResource' => ['id', 'workout_session_id'],

@@ -33,6 +33,8 @@ class ExerciseCatalogSeeder extends Seeder
                     'discipline_id' => $discipline->getKey(),
                     'code' => $exercise['code'],
                     'name' => $exercise['name'],
+                    'description' => $exercise['description'],
+                    'video_url' => $exercise['video_url'],
                 ],
                 $catalog['exercises'],
             );
@@ -40,7 +42,7 @@ class ExerciseCatalogSeeder extends Seeder
             Exercise::query()->upsert(
                 $exercises,
                 ['discipline_id', 'code'],
-                ['name'],
+                ['name', 'description', 'video_url'],
             );
         });
     }
@@ -51,7 +53,7 @@ class ExerciseCatalogSeeder extends Seeder
      * @return array{
      *     schema_version: int,
      *     discipline: array{code: string, name: string},
-     *     exercises: list<array{code: string, name: string}>
+     *     exercises: list<array{code: string, name: string, description: ?string, video_url: ?string}>
      * }
      */
     private function catalog(): array
@@ -67,9 +69,11 @@ class ExerciseCatalogSeeder extends Seeder
             'discipline.code' => ['required', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/'],
             'discipline.name' => ['required', 'string', 'max:255'],
             'exercises' => ['required', 'array', 'min:1'],
-            'exercises.*' => ['required', 'array:code,name'],
+            'exercises.*' => ['required', 'array:code,name,description,video_url'],
             'exercises.*.code' => ['required', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', 'distinct:strict'],
             'exercises.*.name' => ['required', 'string', 'max:255'],
+            'exercises.*.description' => ['nullable', 'string'],
+            'exercises.*.video_url' => ['nullable', 'string', 'url:http,https', 'max:2048'],
         ])->validate();
 
         $schemaVersion = $validated['schema_version'] ?? null;
@@ -99,14 +103,21 @@ class ExerciseCatalogSeeder extends Seeder
 
             $code = $exercise['code'] ?? null;
             $name = $exercise['name'] ?? null;
+            $description = $exercise['description'] ?? null;
+            $videoUrl = $exercise['video_url'] ?? null;
 
-            if (! is_string($code) || ! is_string($name)) {
+            if (! is_string($code)
+                || ! is_string($name)
+                || ($description !== null && ! is_string($description))
+                || ($videoUrl !== null && ! is_string($videoUrl))) {
                 throw new UnexpectedValueException('The validated exercise entry contains unexpected field types.');
             }
 
             $normalizedExercises[] = [
                 'code' => $code,
                 'name' => $name,
+                'description' => $description,
+                'video_url' => $videoUrl,
             ];
         }
 
