@@ -19,7 +19,7 @@ final class UpdateTrainingProgramController extends Controller
     )]
     #[OpenApiResponse(
         status: 409,
-        description: 'Another schedule mutation is in progress.',
+        description: 'A program already exists for the weekday or schedule mutation is in progress.',
         type: 'array{code: string, message: string}',
     )]
     public function __invoke(

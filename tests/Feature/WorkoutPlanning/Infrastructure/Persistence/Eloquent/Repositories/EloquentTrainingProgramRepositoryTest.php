@@ -169,6 +169,33 @@ it('rejects a second active program for the same user and weekday atomically', f
     $this->assertDatabaseCount('planned_exercises', 1);
 });
 
+it('translates a weekday conflict on save and rolls back all changes', function () use ($repository, $plannedExercise): void {
+    $user = User::factory()->create();
+    $exercise = Exercise::factory()->create();
+    $trainingPrograms = $repository();
+    $program = $trainingPrograms->add(TrainingProgram::create(
+        new UserId($user->id),
+        Weekday::Monday,
+        new PlannedExerciseCollection($plannedExercise($exercise, 1, 6, 100_000, 1)),
+    ));
+    $trainingPrograms->add(TrainingProgram::create(
+        new UserId($user->id),
+        Weekday::Tuesday,
+        new PlannedExerciseCollection($plannedExercise($exercise, 1, 8, 50_000, 1)),
+    ));
+    $program->reschedule(Weekday::Tuesday);
+    $program->rename(new ProgramName('Изменённая программа'));
+    $program->replaceExercises(new PlannedExerciseCollection($plannedExercise($exercise, 2, 10, 60_000, 1)));
+
+    expect(fn () => $trainingPrograms->save($program))->toThrow(TrainingProgramAlreadyExists::class);
+
+    $this->assertDatabaseHas('training_programs', [
+        'user_id' => $user->id, 'weekday' => 1, 'name' => 'Тренировка',
+    ]);
+    $this->assertDatabaseHas('planned_sets', ['repetitions' => 6, 'working_weight_grams' => 100_000]);
+    $this->assertDatabaseCount('planned_sets', 2);
+});
+
 it('replaces the persisted exercise prescription in one save', function () use ($repository, $plannedExercise): void {
     $user = User::factory()->create();
     $benchPress = Exercise::factory()->create();

@@ -22,8 +22,7 @@ final class UpdateTrainingProgramRequest extends FormRequest
     public function rules(): array
     {
         return [
-            /** @ignoreParam */
-            'weekday' => ['prohibited'],
+            'weekday' => ['sometimes', 'required', 'integer', 'between:1,7'],
             'name' => ['required', 'string', 'max:255'],
             'exercises' => ['required', 'array', 'list', 'min:1'],
             'exercises.*' => ['array:exercise_id,sets'],
@@ -50,7 +49,9 @@ final class UpdateTrainingProgramRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'weekday.prohibited' => 'Программу нельзя перенести на другой день.',
+            'weekday.required' => 'Укажите день недели.',
+            'weekday.integer' => 'День недели должен быть целым числом.',
+            'weekday.between' => 'День недели должен быть числом от 1 до 7.',
             'name.required' => 'Укажите название программы.',
             'name.string' => 'Название программы должно быть строкой.',
             'name.max' => 'Название программы не должно быть длиннее 255 символов.',
@@ -89,6 +90,7 @@ final class UpdateTrainingProgramRequest extends FormRequest
         }
 
         /** @var array{
+         *     weekday?: int,
          *     name: string,
          *     exercises: list<array{
          *         exercise_id: int,
@@ -105,6 +107,7 @@ final class UpdateTrainingProgramRequest extends FormRequest
             userId: $user->id,
             trainingProgramId: (int) $this->route('trainingProgramId'),
             name: $validated['name'],
+            weekday: isset($validated['weekday']) ? (int) $validated['weekday'] : null,
             exercises: array_map(
                 static fn (array $exercise): PlannedExerciseInput => new PlannedExerciseInput(
                     exerciseId: $exercise['exercise_id'],

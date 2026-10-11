@@ -17,7 +17,7 @@ final class TrainingProgram
     private function __construct(
         public private(set) readonly ?TrainingProgramId $id,
         public private(set) readonly UserId $userId,
-        public private(set) readonly Weekday $weekday,
+        public private(set) Weekday $weekday,
         public private(set) ProgramName $name,
         PlannedExerciseCollection $exercises,
     ) {
@@ -59,6 +59,11 @@ final class TrainingProgram
     public function plannedExercises(): array
     {
         return $this->exercises->copy()->all();
+    }
+
+    public function reschedule(Weekday $weekday): void
+    {
+        $this->weekday = $weekday;
     }
 
     public function rename(ProgramName $name): void

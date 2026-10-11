@@ -12,5 +12,6 @@ final readonly class UpdateTrainingProgramInput
         public private(set) int $trainingProgramId,
         public private(set) string $name,
         public private(set) array $exercises,
+        public private(set) ?int $weekday = null,
     ) {}
 }

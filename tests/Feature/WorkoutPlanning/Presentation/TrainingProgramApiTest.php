@@ -394,7 +394,7 @@ it('adds and removes individual sets when updating the same exercise', function 
     $this->assertDatabaseCount('planned_sets', 2);
 });
 
-it('returns 422 when update attempts to move a program to another weekday', function () use ($sets): void {
+it('updates a program weekday while retaining its identity', function (int $weekday) use ($sets): void {
     $user = User::factory()->create();
     $exercise = Exercise::factory()->create();
     Sanctum::actingAs($user);
@@ -407,7 +407,7 @@ it('returns 422 when update attempts to move a program to another weekday', func
     ])->assertCreated()->json('data.id'))->toBeInt()->value;
 
     $response = $this->putJson('/api/training-programs/'.$programId, [
-        'weekday' => 2,
+        'weekday' => $weekday,
         'name' => 'Тренировка',
         'exercises' => [[
             'exercise_id' => $exercise->id,
@@ -416,13 +416,60 @@ it('returns 422 when update attempts to move a program to another weekday', func
     ]);
 
     $response
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors(['weekday']);
+        ->assertOk()
+        ->assertJsonPath('data.id', $programId)
+        ->assertJsonPath('data.weekday', $weekday);
     $this->assertDatabaseHas('training_programs', [
         'id' => $programId,
-        'weekday' => 1,
+        'weekday' => $weekday,
     ]);
+    $this->getJson('/api/training-programs/weekdays/'.$weekday)
+        ->assertOk()->assertJsonPath('data.id', $programId);
+    if ($weekday !== 1) {
+        $this->getJson('/api/training-programs/weekdays/1')->assertNotFound();
+    }
+})->with([1, 2, 7]);
+
+it('rejects moving a program to an occupied weekday without changing its contents', function () use ($sets): void {
+    Sanctum::actingAs(User::factory()->create());
+    $exercise = Exercise::factory()->create();
+    $payload = [
+        'name' => 'Исходная программа',
+        'exercises' => [['exercise_id' => $exercise->id, 'sets' => $sets(1, 6, 100)]],
+    ];
+    $programId = expect($this->postJson('/api/training-programs', ['weekday' => 1] + $payload)
+        ->assertCreated()->json('data.id'))->toBeInt()->value;
+    $this->postJson('/api/training-programs', ['weekday' => 2] + $payload)->assertCreated();
+
+    $this->putJson('/api/training-programs/'.$programId, [
+        'weekday' => 2,
+        'name' => 'Изменённая программа',
+        'exercises' => [['exercise_id' => $exercise->id, 'sets' => $sets(1, 10, 50)]],
+    ])->assertConflict()->assertJsonPath('code', 'training_program_already_exists');
+
+    $this->assertDatabaseHas('training_programs', [
+        'id' => $programId, 'weekday' => 1, 'name' => 'Исходная программа',
+    ]);
+    $this->getJson('/api/training-programs/weekdays/1')->assertOk()
+        ->assertJsonPath('data.exercises.0.sets.0.repetitions', 6)
+        ->assertJsonPath('data.exercises.0.sets.0.working_weight_kg', 100);
 });
+
+it('rejects an invalid weekday when updating a program', function (mixed $weekday) use ($sets): void {
+    Sanctum::actingAs(User::factory()->create());
+    $exercise = Exercise::factory()->create();
+    $payload = [
+        'name' => 'Тренировка',
+        'exercises' => [['exercise_id' => $exercise->id, 'sets' => $sets(1, 6, 100)]],
+    ];
+    $programId = expect($this->postJson('/api/training-programs', ['weekday' => 1] + $payload)
+        ->assertCreated()->json('data.id'))->toBeInt()->value;
+
+    $this->putJson('/api/training-programs/'.$programId, ['weekday' => $weekday] + $payload)
+        ->assertUnprocessable()->assertJsonValidationErrors(['weekday']);
+
+    $this->assertDatabaseHas('training_programs', ['id' => $programId, 'weekday' => 1]);
+})->with([0, 8, 1.5, 'Monday', null, '']);
 
 it('returns 404 when updating another user program', function () use ($sets): void {
     $owner = User::factory()->create();
@@ -439,6 +486,7 @@ it('returns 404 when updating another user program', function () use ($sets): vo
     Sanctum::actingAs($otherUser);
 
     $response = $this->putJson('/api/training-programs/'.$programId, [
+        'weekday' => 2,
         'name' => 'Чужая программа',
         'exercises' => [[
             'exercise_id' => $exercise->id,

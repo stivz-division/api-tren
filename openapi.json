@@ -640,7 +640,7 @@
                         }
                     },
                     "409": {
-                        "description": "Another schedule mutation is in progress.",
+                        "description": "A program already exists for the weekday or schedule mutation is in progress.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2415,6 +2415,11 @@
             "UpdateTrainingProgramRequest": {
                 "type": "object",
                 "properties": {
+                    "weekday": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 7
+                    },
                     "name": {
                         "type": "string",
                         "maxLength": 255

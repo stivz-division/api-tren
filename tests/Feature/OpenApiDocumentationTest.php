@@ -311,10 +311,10 @@ it('documents authentication and request validation contracts', function () use 
             $document,
             $openApiOperation($document, 'PUT', '/training-programs/{trainingProgramId}'),
         );
-        $updateProgramProperties = $openApiArrayAt($updateProgramSchema, ['properties']);
 
         $this->assertSame(['name', 'exercises'], $openApiArrayAt($updateProgramSchema, ['required']));
-        $this->assertArrayNotHasKey('weekday', $updateProgramProperties);
+        $this->assertSame(1, $openApiIntegerAt($updateProgramSchema, ['properties', 'weekday', 'minimum']));
+        $this->assertSame(7, $openApiIntegerAt($updateProgramSchema, ['properties', 'weekday', 'maximum']));
 
         $history = $openApiOperation($document, 'GET', '/workout-sessions');
         $historyParameters = [];

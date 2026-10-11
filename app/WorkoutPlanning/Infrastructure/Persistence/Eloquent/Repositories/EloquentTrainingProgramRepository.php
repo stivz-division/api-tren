@@ -95,39 +95,50 @@ final readonly class EloquentTrainingProgramRepository implements TrainingProgra
     {
         $id = $this->identityOf($trainingProgram);
 
-        $this->database->transaction(function () use ($id, $trainingProgram): void {
-            User::query()->whereKey($trainingProgram->userId->value)->lockForUpdate()->firstOrFail();
-            $model = TrainingProgramModel::query()
-                ->whereKey($id->value)
-                ->where('user_id', $trainingProgram->userId->value)
-                ->lockForUpdate()
-                ->first();
+        try {
+            $this->database->transaction(function () use ($id, $trainingProgram): void {
+                User::query()->whereKey($trainingProgram->userId->value)->lockForUpdate()->firstOrFail();
+                $model = TrainingProgramModel::query()
+                    ->whereKey($id->value)
+                    ->where('user_id', $trainingProgram->userId->value)
+                    ->lockForUpdate()
+                    ->first();
 
-            if ($model === null) {
-                throw new LogicException('Нельзя сохранить несуществующую программу тренировок.');
-            }
-
-            $model->load('plannedExercises.plannedSets');
-            $newSets = [];
-            foreach ($trainingProgram->plannedExercises() as $exercise) {
-                $newSets[$exercise->exerciseId->value] = $this->plannedSetAttributes($exercise);
-            }
-            foreach ($model->plannedExercises as $exercise) {
-                $oldSets = $exercise->plannedSets->map(static fn ($set): array => [
-                    'position' => $set->position, 'repetitions' => $set->repetitions, 'working_weight_grams' => $set->working_weight_grams,
-                ])->all();
-                if (($newSets[$exercise->exercise_id] ?? null) !== $oldSets) {
-                    $this->invalidator->changed($trainingProgram->userId->value, $id->value, $exercise->exercise_id, now()->toDateTimeImmutable());
+                if ($model === null) {
+                    throw new LogicException('Нельзя сохранить несуществующую программу тренировок.');
                 }
+
+                $model->load('plannedExercises.plannedSets');
+                $newSets = [];
+                foreach ($trainingProgram->plannedExercises() as $exercise) {
+                    $newSets[$exercise->exerciseId->value] = $this->plannedSetAttributes($exercise);
+                }
+                foreach ($model->plannedExercises as $exercise) {
+                    $oldSets = $exercise->plannedSets->map(static fn ($set): array => [
+                        'position' => $set->position, 'repetitions' => $set->repetitions, 'working_weight_grams' => $set->working_weight_grams,
+                    ])->all();
+                    if (($newSets[$exercise->exercise_id] ?? null) !== $oldSets) {
+                        $this->invalidator->changed($trainingProgram->userId->value, $id->value, $exercise->exercise_id, now()->toDateTimeImmutable());
+                    }
+                }
+
+                $model->update([
+                    'weekday' => $trainingProgram->weekday->value,
+                    'name' => $trainingProgram->name->value,
+                ]);
+                $model->plannedExercises()->delete();
+                $this->persistPlannedExercises($model, $trainingProgram);
+            });
+        } catch (QueryException $exception) {
+            if (! $this->isProgramSlotConflict($exception)) {
+                throw $exception;
             }
 
-            $model->update([
-                'weekday' => $trainingProgram->weekday->value,
-                'name' => $trainingProgram->name->value,
-            ]);
-            $model->plannedExercises()->delete();
-            $this->persistPlannedExercises($model, $trainingProgram);
-        });
+            throw new TrainingProgramAlreadyExists(
+                $trainingProgram->userId,
+                $trainingProgram->weekday,
+            );
+        }
     }
 
     public function delete(TrainingProgram $trainingProgram): void
