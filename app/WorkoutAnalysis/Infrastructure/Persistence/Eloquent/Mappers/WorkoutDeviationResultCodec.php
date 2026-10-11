@@ -12,14 +12,18 @@ use UnexpectedValueException;
 
 final readonly class WorkoutDeviationResultCodec
 {
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     public function __construct(private CompletedWorkoutSnapshotCodec $snapshotCodec) {}
 
     /** @return array<string, mixed> */
-    public function encode(WorkoutDeviationResult $result): array
+    public function encode(WorkoutDeviationResult $result, int $version = self::VERSION): array
     {
-        return [
+        $this->assertVersion($version);
+        if ($version === 1 && $result->excludedExercisesCount > 0) {
+            throw new UnexpectedValueException('Формат v1 не поддерживает результат с исключёнными упражнениями.');
+        }
+        $payload = [
             'completed_exercises' => $result->completedExercises,
             'skipped_exercises' => $result->skippedExercises,
             'sets' => $this->metric($result->sets),
@@ -43,14 +47,18 @@ final readonly class WorkoutDeviationResultCodec
                 ], $exercise->setComparisons),
             ], $result->exercises),
         ];
+        if ($version === 2) {
+            $payload['has_comparable_exercises'] = $result->hasComparableExercises;
+            $payload['excluded_exercises_count'] = $result->excludedExercisesCount;
+        }
+
+        return $payload;
     }
 
     /** @param array<string, mixed> $payload */
     public function decode(array $payload, int $version, CompletedWorkoutSnapshot $snapshot): WorkoutDeviationResult
     {
-        if ($version !== self::VERSION) {
-            throw new UnexpectedValueException('Неподдерживаемая версия формата результата сравнения тренировки.');
-        }
+        $this->assertVersion($version);
 
         $snapshots = $snapshot->exercises->all();
         $exercises = [];
@@ -65,11 +73,18 @@ final readonly class WorkoutDeviationResultCodec
         }
 
         $result = new WorkoutDeviationResult($snapshot, ...$exercises);
-        if (! AnalysisPayload::equals($this->encode($result), $payload)) {
+        if (! AnalysisPayload::equals($this->encode($result, $version), $payload)) {
             throw new UnexpectedValueException('Некорректный сохранённый результат сравнения тренировки.');
         }
 
         return $result;
+    }
+
+    private function assertVersion(int $version): void
+    {
+        if (! in_array($version, [1, self::VERSION], true)) {
+            throw new UnexpectedValueException('Неподдерживаемая версия формата результата сравнения тренировки.');
+        }
     }
 
     /** @return array{planned: int, actual: int, difference: int, percentage: float|null}|null */

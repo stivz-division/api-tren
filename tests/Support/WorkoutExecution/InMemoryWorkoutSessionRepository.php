@@ -113,6 +113,8 @@ final class InMemoryWorkoutSessionRepository implements WorkoutSessionRepository
                 new WorkoutSetCollection(...$exercise->plannedSets()),
                 new WorkoutSetCollection(...$exercise->workoutSets()),
                 $exercise->status,
+                $exercise->replacements(),
+                $exercise->sourcePlanRevision,
             ),
             $session->workoutExercises(),
         );

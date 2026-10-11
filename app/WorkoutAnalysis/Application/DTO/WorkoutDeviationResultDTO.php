@@ -18,6 +18,8 @@ final readonly class WorkoutDeviationResultDTO
         public private(set) MetricDeviationDTO $repetitions,
         public private(set) MetricDeviationDTO $volume,
         public private(set) array $exercises,
+        public private(set) bool $hasComparableExercises,
+        public private(set) int $excludedExercisesCount,
     ) {}
 
     public static function fromDomain(WorkoutDeviationResult $value): self
@@ -32,6 +34,8 @@ final readonly class WorkoutDeviationResultDTO
             MetricDeviationDTO::fromDomain($value->repetitions),
             MetricDeviationDTO::fromDomain($value->volume),
             array_map(ExerciseDeviationDTO::fromDomain(...), $value->exercises),
+            $value->hasComparableExercises,
+            $value->excludedExercisesCount,
         );
     }
 }

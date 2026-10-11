@@ -5,6 +5,7 @@ namespace App\WorkoutAnalysis\Domain\Services;
 use App\WorkoutAnalysis\Domain\Collections\SetSnapshotCollection;
 use App\WorkoutAnalysis\Domain\Enums\ExerciseCompletionStatus;
 use App\WorkoutAnalysis\Domain\ValueObjects\CompletedWorkoutSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseId;
 use App\WorkoutAnalysis\Domain\ValueObjects\ExercisePerformanceSnapshot;
 use App\WorkoutAnalysis\Domain\ValueObjects\RecommendationEligibility;
 use DateTimeImmutable;
@@ -30,7 +31,7 @@ final class RecommendationCounterCalculator
         $successes = 0;
         $failures = 0;
         $currentlySuccessful = false;
-        foreach (array_reverse($history) as $index => $workout) {
+        foreach (array_reverse($history) as $workout) {
             if ($lastPlanChangeAt !== null && $workout->completedAt <= $lastPlanChangeAt) {
                 break;
             }
@@ -41,11 +42,14 @@ final class RecommendationCounterCalculator
                     break;
                 }
             }
+            if ($performance === null && $workout->excludesPlanExercise(new ExerciseId($exerciseId))) {
+                continue;
+            }
             if ($performance === null || $performance->plannedSets != $currentPlan) {
                 break;
             }
             $successful = $this->successful($performance);
-            if ($index === 0) {
+            if ($successes === 0 && $failures === 0) {
                 $currentlySuccessful = $successful;
             }
             if (($successful && $failures > 0) || (! $successful && $successes > 0)) {
@@ -55,8 +59,14 @@ final class RecommendationCounterCalculator
             $failures += (int) ! $successful;
         }
 
-        return new RecommendationEligibility($exerciseId, $successes, $failures, $sinceReplacement,
-            $lastRejectedAt === null ? max(4, $sinceRejection) : $sinceRejection, $currentlySuccessful);
+        return new RecommendationEligibility(
+            $exerciseId,
+            $successes,
+            $failures,
+            $sinceReplacement,
+            $lastRejectedAt === null ? max(4, $sinceRejection) : $sinceRejection,
+            $currentlySuccessful,
+        );
     }
 
     private function successful(ExercisePerformanceSnapshot $exercise): bool

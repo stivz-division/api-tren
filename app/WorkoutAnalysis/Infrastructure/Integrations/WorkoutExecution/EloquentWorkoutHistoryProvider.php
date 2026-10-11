@@ -60,7 +60,11 @@ final readonly class EloquentWorkoutHistoryProvider implements WorkoutHistoryPro
             ->where('training_program_id', $sameProgram ? '=' : '<>', $query->trainingProgramId)
             ->where('completed_at', '<', $completedBefore->format($dateFormat))
             ->orderByDesc('completed_at')->orderByDesc('id')->limit($limit)
-            ->with('workoutExercises.plannedSets', 'workoutExercises.workoutSets')->get();
+            ->with([
+                'workoutExercises.plannedSets',
+                'workoutExercises.workoutSets',
+                'workoutExercises.replacements.plannedSets',
+            ])->get();
         if ($sessions->isEmpty()) {
             return [];
         }

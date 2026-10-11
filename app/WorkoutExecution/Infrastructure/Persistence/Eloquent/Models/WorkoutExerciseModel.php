@@ -15,6 +15,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $exercise_name
  * @property int $position
  * @property string $status
+ * @property int|null $source_plan_revision
+ * @property-read Collection<int, WorkoutExerciseReplacementModel> $replacements
  * @property-read Collection<int, WorkoutPlannedSetModel> $plannedSets
  * @property-read Collection<int, WorkoutSetModel> $workoutSets
  */
@@ -23,6 +25,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'exercise_name',
     'position',
     'status',
+    'source_plan_revision',
 ])]
 final class WorkoutExerciseModel extends Model
 {
@@ -52,6 +55,14 @@ final class WorkoutExerciseModel extends Model
             ->orderBy('id');
     }
 
+    /** @return HasMany<WorkoutExerciseReplacementModel, $this> */
+    public function replacements(): HasMany
+    {
+        return $this->hasMany(WorkoutExerciseReplacementModel::class, 'workout_exercise_id')
+            ->orderBy('sequence')
+            ->orderBy('id');
+    }
+
     /** @return array<string, string> */
     protected function casts(): array
     {
@@ -60,6 +71,7 @@ final class WorkoutExerciseModel extends Model
             'workout_session_id' => 'integer',
             'exercise_id' => 'integer',
             'position' => 'integer',
+            'source_plan_revision' => 'integer',
         ];
     }
 }

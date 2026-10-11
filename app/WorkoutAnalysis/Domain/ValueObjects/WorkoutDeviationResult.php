@@ -7,8 +7,12 @@ use InvalidArgumentException;
 
 final readonly class WorkoutDeviationResult
 {
-    /** @var non-empty-list<ExerciseDeviation> */
+    /** @var list<ExerciseDeviation> */
     public private(set) array $exercises;
+
+    public private(set) bool $hasComparableExercises;
+
+    public private(set) int $excludedExercisesCount;
 
     public private(set) int $completedExercises;
 
@@ -27,7 +31,7 @@ final readonly class WorkoutDeviationResult
         $exercises = array_values($exercises);
         $snapshots = $snapshot->exercises->all();
 
-        if (count($exercises) !== count($snapshots) || $exercises === []) {
+        if (count($exercises) !== count($snapshots)) {
             throw new InvalidArgumentException('Результат должен содержать сравнение каждого упражнения снимка.');
         }
 
@@ -49,6 +53,8 @@ final readonly class WorkoutDeviationResult
         }
 
         $this->exercises = $exercises;
+        $this->hasComparableExercises = $snapshot->hasComparableExercises();
+        $this->excludedExercisesCount = count($snapshot->excludedExercises);
         $this->completedExercises = $completed;
         $this->skippedExercises = count($exercises) - $completed;
         $this->sets = new MetricDeviation($planned->sets, $actual->sets);

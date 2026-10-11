@@ -18,7 +18,7 @@ use UnexpectedValueException;
 
 final readonly class AnalysisContextSnapshotCodec
 {
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     public function __construct(
         private CompletedWorkoutSnapshotCodec $snapshotCodec,
@@ -26,56 +26,81 @@ final readonly class AnalysisContextSnapshotCodec
     ) {}
 
     /** @return array<string, mixed> */
-    public function encode(AnalysisContextSnapshot $context): array
+    public function encode(AnalysisContextSnapshot $context, int $version = self::VERSION): array
     {
+        $this->assertVersion($version);
+
         return [
             'current_workout_session_id' => $context->currentWorkout->snapshot->workoutSessionId->value,
             'captured_at' => AnalysisPayload::formatDate($context->capturedAt),
-            'same_program' => $this->encodeWindow($context->sameProgram),
-            'other_programs' => $this->encodeWindow($context->otherPrograms),
+            'same_program' => $this->encodeWindow($context->sameProgram, $version),
+            'other_programs' => $this->encodeWindow($context->otherPrograms, $version),
         ];
     }
 
     /** @param array<string, mixed> $payload */
     public function decode(array $payload, int $version, WorkoutDeviationResult $currentWorkout): AnalysisContextSnapshot
     {
-        if ($version !== self::VERSION) {
-            throw new UnexpectedValueException('Неподдерживаемая версия формата контекста анализа.');
-        }
+        $this->assertVersion($version);
         $context = new AnalysisContextSnapshot(
             $currentWorkout,
             $this->decodeWindow($payload['same_program'] ?? null),
             $this->decodeWindow($payload['other_programs'] ?? null),
             AnalysisPayload::date($payload['captured_at'] ?? null),
         );
-        if (! AnalysisPayload::equals($this->encode($context), $payload)) {
+        $expected = [
+            'current_workout_session_id' => $context->currentWorkout->snapshot->workoutSessionId->value,
+            'captured_at' => AnalysisPayload::formatDate($context->capturedAt),
+            'same_program' => $this->encodeWindow($context->sameProgram, $version, AnalysisPayload::object($payload['same_program'] ?? null)),
+            'other_programs' => $this->encodeWindow($context->otherPrograms, $version, AnalysisPayload::object($payload['other_programs'] ?? null)),
+        ];
+        if (! AnalysisPayload::equals($expected, $payload)) {
             throw new UnexpectedValueException('Некорректный сохранённый контекст анализа.');
         }
 
         return $context;
     }
 
-    /** @return array<string, mixed> */
-    private function encodeWindow(WorkoutHistoryWindow $window): array
+    private function assertVersion(int $version): void
     {
-        return ['limit' => $window->limit, 'entries' => array_map(fn (WorkoutHistoryEntry $entry): array => [
-            'snapshot' => $this->snapshotCodec->encode($entry->deviations->snapshot),
-            'snapshot_version' => CompletedWorkoutSnapshotCodec::VERSION,
-            'deviations' => $this->resultCodec->encode($entry->deviations),
-            'deviations_version' => WorkoutDeviationResultCodec::VERSION,
-            'conclusion' => $entry->conclusion === null ? null : [
-                'analysis_id' => $entry->conclusion->analysisId->value,
-                'workout_session_id' => $entry->conclusion->workoutSessionId->value,
-                'current_workout' => $entry->conclusion->currentWorkout,
-                'history' => $entry->conclusion->history,
-                'evidence' => $this->encodeEvidence($entry->conclusion->evidence),
-            ],
-            'recommendations' => $entry->recommendations === null ? null : [
-                'analysis_id' => $entry->recommendations->analysisId->value,
-                'workout_session_id' => $entry->recommendations->workoutSessionId->value,
-                'items' => array_map($this->encodeRecommendation(...), $entry->recommendations->recommendations),
-            ],
-        ], $window->all())];
+        if (! in_array($version, [1, self::VERSION], true)) {
+            throw new UnexpectedValueException('Неподдерживаемая версия формата контекста анализа.');
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $storedWindow
+     * @return array<string, mixed>
+     */
+    private function encodeWindow(WorkoutHistoryWindow $window, int $version, ?array $storedWindow = null): array
+    {
+        $storedEntries = $storedWindow === null ? [] : AnalysisPayload::list($storedWindow['entries'] ?? null);
+        $entries = [];
+        foreach ($window->all() as $index => $entry) {
+            $stored = isset($storedEntries[$index]) ? AnalysisPayload::object($storedEntries[$index]) : null;
+            $snapshotVersion = $stored === null ? $version : AnalysisPayload::integer($stored['snapshot_version'] ?? null);
+            $resultVersion = $stored === null ? $version : AnalysisPayload::integer($stored['deviations_version'] ?? null);
+            $entries[] = [
+                'snapshot' => $this->snapshotCodec->encode($entry->deviations->snapshot, $snapshotVersion),
+                'snapshot_version' => $snapshotVersion,
+                'deviations' => $this->resultCodec->encode($entry->deviations, $resultVersion),
+                'deviations_version' => $resultVersion,
+                'conclusion' => $entry->conclusion === null ? null : [
+                    'analysis_id' => $entry->conclusion->analysisId->value,
+                    'workout_session_id' => $entry->conclusion->workoutSessionId->value,
+                    'current_workout' => $entry->conclusion->currentWorkout,
+                    'history' => $entry->conclusion->history,
+                    'evidence' => $this->encodeEvidence($entry->conclusion->evidence),
+                ],
+                'recommendations' => $entry->recommendations === null ? null : [
+                    'analysis_id' => $entry->recommendations->analysisId->value,
+                    'workout_session_id' => $entry->recommendations->workoutSessionId->value,
+                    'items' => array_map($this->encodeRecommendation(...), $entry->recommendations->recommendations),
+                ],
+            ];
+        }
+
+        return ['limit' => $window->limit, 'entries' => $entries];
     }
 
     private function decodeWindow(mixed $payload): WorkoutHistoryWindow

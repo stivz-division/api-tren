@@ -1,13 +1,26 @@
 <?php
 
 use App\WorkoutAnalysis\Application\Exceptions\AIProviderFailed;
+use App\WorkoutAnalysis\Domain\Collections\ExercisePerformanceCollection;
 use App\WorkoutAnalysis\Domain\Collections\WorkoutHistoryWindow;
 use App\WorkoutAnalysis\Domain\Enums\AnalysisFailureCode;
 use App\WorkoutAnalysis\Domain\Enums\ExerciseCompletionStatus;
+use App\WorkoutAnalysis\Domain\Services\RecommendationAdmissionPolicy;
+use App\WorkoutAnalysis\Domain\Services\WorkoutDeviationCalculator;
 use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisContextSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisEvidenceReference;
+use App\WorkoutAnalysis\Domain\ValueObjects\CompletedWorkoutSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExcludedExerciseSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseId;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExercisePosition;
+use App\WorkoutAnalysis\Domain\ValueObjects\RecommendationBatch;
+use App\WorkoutAnalysis\Domain\ValueObjects\RecommendationProposal;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAIResult;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAnalysisId;
+use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutHistoryEntry;
+use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutAnalysis\Infrastructure\Integrations\OpenAI\OpenAIRecommendationProvider;
+use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\AnalysisPayload;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\Support\WorkoutAnalysis\WorkoutAnalysisFixture as Fixture;
@@ -80,7 +93,7 @@ it('sends server allowed change types for the first workout and preserves the fr
 
     $batch = app(OpenAIRecommendationProvider::class)->generate($analysis, $context);
 
-    expect($batch->promptVersion)->toBe(2);
+    expect($batch->promptVersion)->toBe(3);
     expect($context['exercises'][0])->not->toHaveKey('allowed_change_types');
     Http::assertSent(function (Request $request) use ($allowed): bool {
         $content = data_get($request->data(), 'input.0.content');
@@ -171,3 +184,63 @@ it('classifies refusal incomplete and malformed envelopes', function (string $ca
     ['incomplete', AnalysisFailureCode::IncompleteAIResponse],
     ['malformed', AnalysisFailureCode::InvalidAIResponse],
 ]);
+
+it('removes excluded source loads from both saved snapshots and program payload while retaining occupied ids', function () use ($program, $response): void {
+    $base = Fixture::result()->snapshot;
+    $makeSnapshot = static fn (int $id, string $completedAt): CompletedWorkoutSnapshot => new CompletedWorkoutSnapshot(
+        new WorkoutSessionId($id),
+        $base->userId,
+        $base->trainingProgramId,
+        $base->programName,
+        new DateTimeImmutable($completedAt),
+        new ExercisePerformanceCollection(
+            Fixture::exercise(id: 20, position: 2, planned: [[8, 20000]], actual: [[8, 20000]]),
+        ),
+        [new ExcludedExerciseSnapshot(new ExerciseId(10), new ExerciseId(10), new ExercisePosition(1))],
+    );
+    $calculator = new WorkoutDeviationCalculator;
+    $context = new AnalysisContextSnapshot(
+        $calculator->calculate($makeSnapshot(51, '2026-09-15T12:00:00Z')),
+        new WorkoutHistoryWindow(3, new WorkoutHistoryEntry($calculator->calculate($makeSnapshot(50, '2026-09-14T12:00:00Z')))),
+        new WorkoutHistoryWindow, new DateTimeImmutable('2026-09-15T12:01:00Z'),
+    );
+    $analysis = new WorkoutAIResult(new WorkoutAnalysisId(91), $context, 'Учитываемая часть тренировки.', 'История.', 'model', 'response', 2, 2);
+    $programContext = $program();
+    $included = $programContext['exercises'][0];
+    $included['exercise_id'] = 20;
+    $included['sets'] = [['position' => 1, 'repetitions' => 8, 'working_weight_grams' => 20000]];
+    $programContext['exercises'][] = $included;
+    $programContext['catalog'][] = ['id' => 20, 'name' => 'Учитываемое упражнение'];
+    Http::fake(['https://api.openai.com/v1/responses' => Http::response($response(['proposals' => [], 'no_change_reason' => 'Сохранить план.']))]);
+
+    app(OpenAIRecommendationProvider::class)->generate($analysis, $programContext);
+
+    expect($programContext['exercises'][0]['sets'][0]['working_weight_grams'])->toBe(50000);
+    Http::assertSent(function (Request $request): bool {
+        $content = data_get($request->data(), 'input.0.content');
+        if (! is_string($content)) {
+            throw new LogicException('Missing context.');
+        }
+        $input = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+        expect(array_column(AnalysisPayload::list(data_get($input, 'program.exercises')), 'exercise_id'))->toBe([10, 20]);
+        expect(data_get($input, 'program.exercises.0.sets'))->toBe([]);
+        expect(data_get($input, 'program.exercises.0.allowed_change_types'))->toBe([]);
+        expect(data_get($input, 'program.exercises.1.allowed_change_types'))->toBe(['progression', 'replacement']);
+        expect(array_column(AnalysisPayload::list(data_get($input, 'program.catalog')), 'id'))->toContain(11);
+        expect(array_column(AnalysisPayload::list(data_get($input, 'analysis_context.current_workout.snapshot.exercises')), 'exercise_id'))->toBe([20]);
+        expect(array_column(AnalysisPayload::list(data_get($input, 'analysis_context.same_program.entries.0.snapshot.exercises')), 'exercise_id'))->toBe([20]);
+        foreach (['50000', '99000'] as $excludedLoad) {
+            expect($content)->not->toContain($excludedLoad);
+        }
+        $analysisContext = json_encode(data_get($input, 'analysis_context'), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        expect($analysisContext)->not->toContain('Разовая замена');
+
+        return true;
+    });
+    Http::assertSentCount(1);
+    $proposal = new RecommendationProposal(20, 'replacement', 10, Fixture::sets([[8, 20000]]), 'Другая нагрузка.',
+        new AnalysisEvidenceReference(new WorkoutAnalysisId(91), new WorkoutSessionId(51), new ExerciseId(20)));
+    $admitted = (new RecommendationAdmissionPolicy)->admit(new RecommendationBatch([$proposal]), $analysis, $programContext);
+    expect($admitted->proposals)->toBe([]);
+    expect($admitted->rejectedReasons)->toBe(['20:replacement_conflict']);
+});

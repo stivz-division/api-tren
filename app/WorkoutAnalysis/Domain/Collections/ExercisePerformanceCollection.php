@@ -21,10 +21,11 @@ final readonly class ExercisePerformanceCollection implements Countable, Iterato
         usort($exercises, static fn (ExercisePerformanceSnapshot $left, ExercisePerformanceSnapshot $right): int => $left->position->value <=> $right->position->value);
 
         $exerciseIds = [];
+        $positions = [];
 
-        foreach ($exercises as $index => $exercise) {
-            if ($exercise->position->value !== $index + 1) {
-                throw new InvalidArgumentException('Позиции упражнений должны быть уникальными и непрерывными, начиная с 1.');
+        foreach ($exercises as $exercise) {
+            if (isset($positions[$exercise->position->value])) {
+                throw new InvalidArgumentException('Позиции учитываемых упражнений должны быть уникальными.');
             }
 
             if (isset($exerciseIds[$exercise->exerciseId->value])) {
@@ -32,6 +33,7 @@ final readonly class ExercisePerformanceCollection implements Countable, Iterato
             }
 
             $exerciseIds[$exercise->exerciseId->value] = true;
+            $positions[$exercise->position->value] = true;
         }
 
         $this->exercises = $exercises;

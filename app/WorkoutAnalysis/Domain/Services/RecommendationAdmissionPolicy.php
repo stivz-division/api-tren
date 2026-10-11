@@ -3,6 +3,7 @@
 namespace App\WorkoutAnalysis\Domain\Services;
 
 use App\WorkoutAnalysis\Domain\Enums\ExerciseCompletionStatus;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseId;
 use App\WorkoutAnalysis\Domain\ValueObjects\RecommendationBatch;
 use App\WorkoutAnalysis\Domain\ValueObjects\RecommendationEligibility;
 use App\WorkoutAnalysis\Domain\ValueObjects\RecommendationProposal;
@@ -73,7 +74,11 @@ final class RecommendationAdmissionPolicy
             $source['completed_since_replacement'], $source['completed_since_rejection'], $source['currently_successful']);
         $currentEligibility = null;
         $snapshot = $analysis->context->currentWorkout->snapshot;
+        $hasCurrentObservation = false;
         foreach ($snapshot->exercises as $exercise) {
+            if ($exercise->exerciseId->value === $source['exercise_id']) {
+                $hasCurrentObservation = true;
+            }
             if ($exercise->exerciseId->value !== $source['exercise_id'] || $exercise->status === ExerciseCompletionStatus::Skipped) {
                 continue;
             }
@@ -86,6 +91,10 @@ final class RecommendationAdmissionPolicy
                 $currentEligibility = $this->counters->calculate($source['exercise_id'], $exercise->plannedSets, [$snapshot]);
             }
             break;
+        }
+
+        if (! $hasCurrentObservation && $snapshot->excludesPlanExercise(new ExerciseId($source['exercise_id']))) {
+            return [];
         }
 
         $allowed = [];

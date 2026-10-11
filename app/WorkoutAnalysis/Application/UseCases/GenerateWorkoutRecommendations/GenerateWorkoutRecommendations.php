@@ -55,9 +55,13 @@ final readonly class GenerateWorkoutRecommendations
         try {
             $context = $claimed->recommendationContext() ?? throw new LogicException('Отсутствует зафиксированный контекст программы.');
             $conclusion = $claimed->ai()->result ?? throw new LogicException('Отсутствует заключение ИИ.');
-            $batch = $context['exercises'] === []
-                ? new RecommendationBatch([], 'Исходная программа или её упражнения больше недоступны.')
-                : $this->admission->admit($this->provider->generate($conclusion, $context), $conclusion, $context);
+            if (! $conclusion->context->currentWorkout->snapshot->hasComparableExercises()) {
+                $batch = new RecommendationBatch([], 'Нет упражнений для сравнения в текущей тренировке');
+            } elseif ($context['exercises'] === []) {
+                $batch = new RecommendationBatch([], 'Исходная программа или её упражнения больше недоступны.');
+            } else {
+                $batch = $this->admission->admit($this->provider->generate($conclusion, $context), $conclusion, $context);
+            }
         } catch (AIProviderFailed $exception) {
             return $this->failures->handle(new RecordWorkoutRecommendationFailureInput($input->userId, $input->analysisId, $input->attemptNumber, $exception->failureCode));
         } catch (Throwable) {

@@ -1,0 +1,137 @@
+{
+    "current_workout_session_id": 51,
+    "captured_at": "2026-09-21T12:00:00.123456Z",
+    "same_program": {
+        "limit": 3,
+        "entries": [
+            {
+                "snapshot": {
+                    "workout_session_id": 50,
+                    "user_id": 7,
+                    "training_program_id": 11,
+                    "program_name": "Грудь и трицепс",
+                    "completed_at": "2026-09-14T12:00:00.000000Z",
+                    "exercises": [
+                        {
+                            "exercise_id": 10,
+                            "name": "Жим лежа",
+                            "position": 1,
+                            "status": "completed",
+                            "planned_sets": [
+                                {
+                                    "position": 1,
+                                    "repetitions": 10,
+                                    "working_weight_grams": 50000
+                                }
+                            ],
+                            "actual_sets": [
+                                {
+                                    "position": 1,
+                                    "repetitions": 10,
+                                    "working_weight_grams": 50000
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "snapshot_version": 1,
+                "deviations": {
+                    "completed_exercises": 1,
+                    "skipped_exercises": 0,
+                    "sets": {
+                        "planned": 1,
+                        "actual": 1,
+                        "difference": 0,
+                        "percentage": 0
+                    },
+                    "repetitions": {
+                        "planned": 10,
+                        "actual": 10,
+                        "difference": 0,
+                        "percentage": 0
+                    },
+                    "volume": {
+                        "planned": 500000,
+                        "actual": 500000,
+                        "difference": 0,
+                        "percentage": 0
+                    },
+                    "exercises": [
+                        {
+                            "exercise_id": 10,
+                            "planned_totals": {
+                                "sets": 1,
+                                "repetitions": 10,
+                                "volume": 500000
+                            },
+                            "actual_totals": {
+                                "sets": 1,
+                                "repetitions": 10,
+                                "volume": 500000
+                            },
+                            "sets": {
+                                "planned": 1,
+                                "actual": 1,
+                                "difference": 0,
+                                "percentage": 0
+                            },
+                            "repetitions": {
+                                "planned": 10,
+                                "actual": 10,
+                                "difference": 0,
+                                "percentage": 0
+                            },
+                            "volume": {
+                                "planned": 500000,
+                                "actual": 500000,
+                                "difference": 0,
+                                "percentage": 0
+                            },
+                            "plan_fulfilled": true,
+                            "set_comparisons": [
+                                {
+                                    "position": 1,
+                                    "planned": {
+                                        "position": 1,
+                                        "repetitions": 10,
+                                        "working_weight_grams": 50000
+                                    },
+                                    "actual": {
+                                        "position": 1,
+                                        "repetitions": 10,
+                                        "working_weight_grams": 50000
+                                    },
+                                    "repetitions": {
+                                        "planned": 10,
+                                        "actual": 10,
+                                        "difference": 0,
+                                        "percentage": 0
+                                    },
+                                    "working_weight": {
+                                        "planned": 50000,
+                                        "actual": 50000,
+                                        "difference": 0,
+                                        "percentage": 0
+                                    },
+                                    "volume": {
+                                        "planned": 500000,
+                                        "actual": 500000,
+                                        "difference": 0,
+                                        "percentage": 0
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "deviations_version": 1,
+                "conclusion": null,
+                "recommendations": null
+            }
+        ]
+    },
+    "other_programs": {
+        "limit": 7,
+        "entries": []
+    }
+}

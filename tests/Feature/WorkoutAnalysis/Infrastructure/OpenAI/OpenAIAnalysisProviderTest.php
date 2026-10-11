@@ -1,10 +1,15 @@
 <?php
 
 use App\WorkoutAnalysis\Application\Exceptions\AIProviderFailed;
+use App\WorkoutAnalysis\Domain\Collections\ExercisePerformanceCollection;
 use App\WorkoutAnalysis\Domain\Collections\WorkoutHistoryWindow;
 use App\WorkoutAnalysis\Domain\Enums\AnalysisFailureCode;
+use App\WorkoutAnalysis\Domain\Services\WorkoutDeviationCalculator;
 use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisContextSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\CompletedWorkoutSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExcludedExerciseSnapshot;
 use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseId;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutAnalysis\Domain\ValueObjects\HistoricalAIConclusion;
 use App\WorkoutAnalysis\Domain\ValueObjects\HistoricalRecommendation;
 use App\WorkoutAnalysis\Domain\ValueObjects\HistoricalRecommendationResult;
@@ -12,6 +17,7 @@ use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAnalysisId;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutHistoryEntry;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutAnalysis\Infrastructure\Integrations\OpenAI\OpenAIAnalysisProvider;
+use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\AnalysisPayload;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\Support\WorkoutAnalysis\WorkoutAnalysisFixture;
@@ -66,7 +72,7 @@ it('renders selected facts with server units and evidence without publishing mod
     expect($result->conclusion->evidence[0]->analysisId->value)->toBe(91);
     expect($result->model)->toBe('actual-model-version');
     expect($result->responseId)->toBe('resp_test');
-    expect($result->promptVersion)->toBe(2);
+    expect($result->promptVersion)->toBe(3);
     expect($result->schemaVersion)->toBe(2);
     Http::assertSent(function (Request $request): bool {
         expect($request->method())->toBe('POST');
@@ -206,3 +212,78 @@ it('rejects refused incomplete or malformed envelopes', function (Closure $modif
         return array_replace_recursive($value, ['output' => [1 => ['content' => [1 => ['type' => 'refusal', 'refusal' => 'secret-refusal']]]]]);
     }, AnalysisFailureCode::AIRefused],
 ]);
+
+it('sends only included current and historical facts while keeping temporary replacements out of performed data', function () use ($response): void {
+    $base = WorkoutAnalysisFixture::result()->snapshot;
+    $makeSnapshot = static fn (int $id, string $completedAt): CompletedWorkoutSnapshot => new CompletedWorkoutSnapshot(
+        new WorkoutSessionId($id),
+        $base->userId,
+        $base->trainingProgramId,
+        $base->programName,
+        new DateTimeImmutable($completedAt),
+        new ExercisePerformanceCollection(
+            WorkoutAnalysisFixture::exercise(id: 20, position: 2, planned: [[8, 20000]], actual: [[8, 20000]]),
+        ),
+        [new ExcludedExerciseSnapshot(new ExerciseId(10), new ExerciseId(10), new ExercisePosition(1))],
+    );
+    $calculator = new WorkoutDeviationCalculator;
+    $context = new AnalysisContextSnapshot(
+        $calculator->calculate($makeSnapshot(51, '2026-09-15T12:00:00Z')),
+        new WorkoutHistoryWindow(3, new WorkoutHistoryEntry($calculator->calculate($makeSnapshot(50, '2026-09-14T12:00:00Z')))),
+        new WorkoutHistoryWindow, new DateTimeImmutable('2026-09-15T12:01:00Z'),
+    );
+    $payload = $response();
+    $payload['output'][1]['content'][0]['text'] = json_encode([
+        'current_workout_fact_ids' => ['current:summary', 'current:exercise:20'],
+        'history_fact_ids' => ['history:50:summary', 'history:50:exercise:20'],
+    ], JSON_THROW_ON_ERROR);
+    Http::fake(['https://api.openai.com/v1/responses' => Http::response($payload)]);
+
+    $result = app(OpenAIAnalysisProvider::class)->analyze(new WorkoutAnalysisId(91), $context);
+
+    expect($result->conclusion->currentWorkout)->toContain('Учитываемая часть', 'исключено позиций: 1', '8 × 20 кг');
+    Http::assertSent(function (Request $request): bool {
+        $content = data_get($request->data(), 'input.0.content');
+        if (! is_string($content)) {
+            throw new LogicException('Missing context.');
+        }
+        $input = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+        expect(array_keys(AnalysisPayload::object(data_get($input, 'facts.current_workout'))))->toBe(['current:summary', 'current:exercise:20']);
+        expect(data_get($input, 'facts.history'))->toHaveKey('history:50:exercise:20')->not->toHaveKey('history:50:exercise:10');
+        foreach (['50 кг', '99 кг', '50000', '99000'] as $excludedLoad) {
+            expect($content)->not->toContain($excludedLoad);
+        }
+        $facts = json_encode(data_get($input, 'facts'), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        expect($facts)->not->toContain('Разовая замена');
+
+        return true;
+    });
+    Http::assertSentCount(1);
+});
+
+it('requests and renders the mandatory no data fact with real provider metadata', function () use ($response): void {
+    $base = WorkoutAnalysisFixture::result()->snapshot;
+    $snapshot = new CompletedWorkoutSnapshot(
+        $base->workoutSessionId,
+        $base->userId,
+        $base->trainingProgramId,
+        $base->programName,
+        $base->completedAt,
+        new ExercisePerformanceCollection,
+        [new ExcludedExerciseSnapshot(new ExerciseId(10), new ExerciseId(10), new ExercisePosition(1))],
+    );
+    $context = new AnalysisContextSnapshot((new WorkoutDeviationCalculator)->calculate($snapshot),
+        new WorkoutHistoryWindow, new WorkoutHistoryWindow, new DateTimeImmutable('2026-09-15T12:01:00Z'));
+    $payload = $response();
+    $payload['output'][1]['content'][0]['text'] = json_encode([
+        'current_workout_fact_ids' => ['current:summary'], 'history_fact_ids' => ['history:same_program:empty'],
+    ], JSON_THROW_ON_ERROR);
+    Http::fake(['https://api.openai.com/v1/responses' => Http::response($payload)]);
+
+    $result = app(OpenAIAnalysisProvider::class)->analyze(new WorkoutAnalysisId(91), $context);
+
+    expect($result->conclusion->currentWorkout)->toContain('Нет упражнений для сравнения', 'нет данных');
+    expect($result->model)->toBe('actual-model-version');
+    expect($result->responseId)->toBe('resp_test');
+    Http::assertSentCount(1);
+});

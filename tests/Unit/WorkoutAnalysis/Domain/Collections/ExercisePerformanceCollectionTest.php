@@ -28,6 +28,14 @@ it('rejects invalid exercise positions', function (int $first, int $second) {
     ))->toThrow(InvalidArgumentException::class);
 })->with([
     'duplicate position' => [1, 1],
-    'gap' => [1, 3],
-    'missing first' => [2, 3],
+
 ]);
+
+it('preserves gaps for positions excluded from the workout comparison', function () {
+    $first = Fixture::exercise(id: 10, position: 2);
+    $second = Fixture::exercise(id: 20, position: 4);
+
+    $collection = new ExercisePerformanceCollection($second, $first);
+
+    expect($collection->all())->toBe([$first, $second]);
+});

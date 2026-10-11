@@ -1,0 +1,89 @@
+{
+    "completed_exercises": 1,
+    "skipped_exercises": 0,
+    "sets": {
+        "planned": 1,
+        "actual": 1,
+        "difference": 0,
+        "percentage": 0
+    },
+    "repetitions": {
+        "planned": 10,
+        "actual": 10,
+        "difference": 0,
+        "percentage": 0
+    },
+    "volume": {
+        "planned": 500000,
+        "actual": 500000,
+        "difference": 0,
+        "percentage": 0
+    },
+    "exercises": [
+        {
+            "exercise_id": 10,
+            "planned_totals": {
+                "sets": 1,
+                "repetitions": 10,
+                "volume": 500000
+            },
+            "actual_totals": {
+                "sets": 1,
+                "repetitions": 10,
+                "volume": 500000
+            },
+            "sets": {
+                "planned": 1,
+                "actual": 1,
+                "difference": 0,
+                "percentage": 0
+            },
+            "repetitions": {
+                "planned": 10,
+                "actual": 10,
+                "difference": 0,
+                "percentage": 0
+            },
+            "volume": {
+                "planned": 500000,
+                "actual": 500000,
+                "difference": 0,
+                "percentage": 0
+            },
+            "plan_fulfilled": true,
+            "set_comparisons": [
+                {
+                    "position": 1,
+                    "planned": {
+                        "position": 1,
+                        "repetitions": 10,
+                        "working_weight_grams": 50000
+                    },
+                    "actual": {
+                        "position": 1,
+                        "repetitions": 10,
+                        "working_weight_grams": 50000
+                    },
+                    "repetitions": {
+                        "planned": 10,
+                        "actual": 10,
+                        "difference": 0,
+                        "percentage": 0
+                    },
+                    "working_weight": {
+                        "planned": 50000,
+                        "actual": 50000,
+                        "difference": 0,
+                        "percentage": 0
+                    },
+                    "volume": {
+                        "planned": 500000,
+                        "actual": 500000,
+                        "difference": 0,
+                        "percentage": 0
+                    }
+                }
+            ]
+        }
+    ]
+}

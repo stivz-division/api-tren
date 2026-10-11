@@ -16,12 +16,17 @@ use App\WorkoutAnalysis\Application\UseCases\PrepareWorkoutAnalysisContext\Prepa
 use App\WorkoutAnalysis\Application\UseCases\PrepareWorkoutAnalysisContext\PrepareWorkoutAnalysisContextInput;
 use App\WorkoutAnalysis\Application\UseCases\RecoverWorkoutAIAnalysis\RecoverWorkoutAIAnalysis;
 use App\WorkoutAnalysis\Application\UseCases\RecoverWorkoutAIAnalysis\RecoverWorkoutAIAnalysisInput;
+use App\WorkoutAnalysis\Domain\Collections\ExercisePerformanceCollection;
 use App\WorkoutAnalysis\Domain\Entities\WorkoutAnalysis;
 use App\WorkoutAnalysis\Domain\Enums\AnalysisFailureCode;
 use App\WorkoutAnalysis\Domain\Enums\AnalysisStatus;
 use App\WorkoutAnalysis\Domain\Repositories\WorkoutAnalysisRepository;
 use App\WorkoutAnalysis\Domain\Services\WorkoutDeviationCalculator;
 use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisContextSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\CompletedWorkoutSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExcludedExerciseSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseId;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutAnalysis\Domain\ValueObjects\UserId;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAIResult;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAnalysisId;
@@ -264,4 +269,38 @@ it('rejects corrupt persisted AI result versions instead of returning an empty c
     WorkoutAIAnalysisModel::query()->where('workout_analysis_id', $id->value)->update(['result_version' => 999]);
 
     expect(fn () => app(WorkoutAnalysisRepository::class)->findForUser($id, $userId))->toThrow(UnexpectedValueException::class);
+});
+
+it('still requests a provider conclusion for an all excluded workout and schedules recommendations', function () use ($pendingAI): void {
+    $user = User::factory()->create();
+    $base = WorkoutAnalysisFixture::result(userId: $user->id)->snapshot;
+    $snapshot = new CompletedWorkoutSnapshot(
+        $base->workoutSessionId,
+        $base->userId,
+        $base->trainingProgramId,
+        $base->programName,
+        $base->completedAt,
+        new ExercisePerformanceCollection,
+        [new ExcludedExerciseSnapshot(new ExerciseId(10), new ExerciseId(10), new ExercisePosition(1))],
+    );
+    $analysis = $pendingAI($user, (new WorkoutDeviationCalculator)->calculate($snapshot));
+    $id = $analysis->id ?? throw new LogicException;
+    $this->mock(AIProvider::class)->shouldReceive('analyze')->once()->andReturnUsing(
+        function (WorkoutAnalysisId $id, AnalysisContextSnapshot $context): WorkoutAIResult {
+            expect($context->currentWorkout->snapshot->hasComparableExercises())->toBeFalse();
+            expect($context->currentWorkout->excludedExercisesCount)->toBe(1);
+            expect(DB::transactionLevel())->toBe(0);
+
+            return new WorkoutAIResult($id, $context, 'Нет данных для сравнения.', 'История.', 'provider-model', 'provider-response', 2, 2);
+        },
+    );
+
+    $stage = app(GenerateWorkoutAIAnalysis::class)->handle(new GenerateWorkoutAIAnalysisInput($user->id, $id->value, 1));
+
+    expect($stage?->status())->toBe(AnalysisStatus::Completed);
+    expect($stage?->result?->model)->toBe('provider-model');
+    expect($stage?->result?->responseId)->toBe('provider-response');
+    $stored = app(WorkoutAnalysisRepository::class)->findForUser($id, $snapshot->userId);
+    expect($stored?->recommendations()?->status())->toBe(AnalysisStatus::Pending);
+    Queue::assertPushed(GenerateWorkoutRecommendationsJob::class, 1);
 });

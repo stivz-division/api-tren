@@ -6,7 +6,10 @@ use DateTimeImmutable;
 
 final readonly class CompletedWorkoutData
 {
-    /** @param list<ExercisePerformanceData> $exercises */
+    /**
+     * @param  list<ExercisePerformanceData>  $exercises
+     * @param  list<ExcludedExerciseData>  $excludedExercises
+     */
     public function __construct(
         public private(set) int $workoutSessionId,
         public private(set) int $userId,
@@ -15,5 +18,6 @@ final readonly class CompletedWorkoutData
         public private(set) string $status,
         public private(set) ?DateTimeImmutable $completedAt,
         public private(set) array $exercises,
+        public private(set) array $excludedExercises = [],
     ) {}
 }

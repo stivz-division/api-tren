@@ -72,6 +72,7 @@ it('returns 401 for every workout session endpoint without a token', function (
     'start' => ['PUT', '/api/workout-sessions/active'],
     'save sets' => ['PUT', '/api/workout-sessions/1/exercises/1/sets'],
     'complete exercise' => ['POST', '/api/workout-sessions/1/exercises/1/complete'],
+    'replace exercise' => ['POST', '/api/workout-sessions/1/exercises/1/replace'],
     'skip exercise' => ['POST', '/api/workout-sessions/1/exercises/1/skip'],
     'reopen exercise' => ['POST', '/api/workout-sessions/1/exercises/1/reopen'],
     'complete session' => ['POST', '/api/workout-sessions/1/complete'],
@@ -410,4 +411,195 @@ it('returns 409 with a stable code while a workout mutation is locked', function
         'message' => 'Изменение тренировки уже выполняется. Повторите попытку.',
     ]);
     $this->assertDatabaseCount('workout_sessions', 0);
+});
+
+it('replaces an exercise with a complete session response and preserves its source snapshot', function (?bool $replaceInPlan) use ($createProgram): void {
+    $user = User::factory()->create();
+    [$program, $source, $other] = $createProgram($user);
+    $candidate = Exercise::factory()->create(['name' => 'Новый жим']);
+    Sanctum::actingAs($user);
+    $sessionId = expect($this->putJson('/api/workout-sessions/active', [
+        'training_program_id' => $program->id,
+    ])->assertOk()->json('data.id'))->toBeInt()->value;
+    $payload = [
+        'request_id' => '550E8400-E29B-41D4-A716-446655440000',
+        'replacement_exercise_id' => $candidate->id,
+        'sets' => [['repetitions' => 11, 'working_weight_kg' => 25.25]],
+    ];
+    if ($replaceInPlan !== null) {
+        $payload['replace_in_plan'] = $replaceInPlan;
+    }
+
+    $this->postJson("/api/workout-sessions/{$sessionId}/exercises/{$source->id}/replace", $payload)
+        ->assertOk()
+        ->assertJsonPath('data.id', $sessionId)
+        ->assertJsonCount(2, 'data.exercises')
+        ->assertJsonPath('data.exercises.0.exercise_id', $source->id)
+        ->assertJsonPath('data.exercises.0.name', $source->name)
+        ->assertJsonPath('data.exercises.0.planned_sets.0.working_weight_kg', 80)
+        ->assertJsonPath('data.exercises.0.effective_exercise.exercise_id', $candidate->id)
+        ->assertJsonPath('data.exercises.0.effective_exercise.name', $candidate->name)
+        ->assertJsonPath('data.exercises.0.effective_exercise.planned_sets', [
+            ['position' => 1, 'repetitions' => 11, 'working_weight_kg' => 25.25],
+        ])
+        ->assertJsonPath('data.exercises.0.replacement', [
+            'request_id' => strtolower($payload['request_id']),
+            'replace_in_plan' => $replaceInPlan ?? false,
+        ])
+        ->assertJsonPath('data.exercises.0.included_in_analysis', $replaceInPlan ?? false)
+        ->assertJsonPath('data.exercises.0.status', 'pending')
+        ->assertJsonPath('data.exercises.1.effective_exercise.exercise_id', $other->id)
+        ->assertJsonPath('data.exercises.1.replacement', null)
+        ->assertJsonPath('data.exercises.1.included_in_analysis', true);
+    $this->getJson('/api/workout-sessions/active')
+        ->assertOk()
+        ->assertJsonPath('data.exercises.0.effective_exercise.exercise_id', $candidate->id);
+    expect($program->plannedExercises()->orderBy('position')->firstOrFail()->exercise_id)
+        ->toBe(($replaceInPlan ?? false) ? $candidate->id : $source->id);
+})->with(['one workout' => false, 'save in plan' => true, 'default' => null]);
+
+it('replays replacements after catalog deletion without resetting progress and addresses commands by source id', function () use ($createProgram): void {
+    $user = User::factory()->create();
+    [$program, $source] = $createProgram($user);
+    $candidate = Exercise::factory()->create();
+    Sanctum::actingAs($user);
+    $sessionId = expect($this->putJson('/api/workout-sessions/active', [
+        'training_program_id' => $program->id,
+    ])->assertOk()->json('data.id'))->toBeInt()->value;
+    $base = "/api/workout-sessions/{$sessionId}/exercises/{$source->id}";
+    $payload = [
+        'request_id' => '550e8400-e29b-41d4-a716-446655440000',
+        'replacement_exercise_id' => $candidate->id,
+        'sets' => [['repetitions' => 10, 'working_weight_kg' => 20]],
+    ];
+    $this->postJson($base.'/replace', $payload)->assertOk();
+    $progress = ['sets' => [['repetitions' => 7, 'working_weight_kg' => 30]]];
+    $this->putJson($base.'/sets', $progress)->assertOk();
+    $candidate->delete();
+
+    $this->postJson($base.'/replace', $payload)
+        ->assertOk()
+        ->assertJsonPath('data.exercises.0.sets.0.repetitions', 7);
+    $this->postJson($base.'/replace', [...$payload, 'replace_in_plan' => true])
+        ->assertConflict()
+        ->assertJsonPath('code', 'workout_replacement_request_conflict');
+    $this->postJson($base.'/complete', $progress)->assertOk();
+    $this->postJson($base.'/reopen')->assertOk();
+    $this->postJson($base.'/skip')->assertOk();
+    $this->postJson($base.'/reopen')
+        ->assertOk()
+        ->assertJsonPath('data.exercises.0.sets.0.working_weight_kg', 20);
+    $this->postJson("/api/workout-sessions/{$sessionId}/cancel")->assertOk();
+    $this->postJson($base.'/replace', $payload)->assertOk();
+});
+
+it('validates replacement payload boundaries', function (array $changes, array $errors): void {
+    Sanctum::actingAs(User::factory()->create());
+    $payload = [
+        'request_id' => '550e8400-e29b-41d4-a716-446655440000',
+        'replacement_exercise_id' => 1,
+        'sets' => [['repetitions' => 10, 'working_weight_kg' => 20]],
+    ];
+
+    $this->postJson('/api/workout-sessions/1/exercises/1/replace', array_replace($payload, $changes))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors($errors);
+})->with([
+    'missing uuid' => [['request_id' => null], ['request_id']],
+    'invalid uuid' => [['request_id' => 'invalid'], ['request_id']],
+    'missing candidate' => [['replacement_exercise_id' => null], ['replacement_exercise_id']],
+    'zero candidate' => [['replacement_exercise_id' => 0], ['replacement_exercise_id']],
+    'fractional candidate' => [['replacement_exercise_id' => 1.5], ['replacement_exercise_id']],
+    'null flag' => [['replace_in_plan' => null], ['replace_in_plan']],
+    'invalid flag' => [['replace_in_plan' => 'yes'], ['replace_in_plan']],
+    'empty sets' => [['sets' => []], ['sets']],
+    'too many sets' => [['sets' => array_fill(0, 101, ['repetitions' => 10, 'working_weight_kg' => 20])], ['sets']],
+    'invalid repetitions' => [['sets' => [['repetitions' => 0, 'working_weight_kg' => 20]]], ['sets.0.repetitions']],
+    'weight precision' => [['sets' => [['repetitions' => 10, 'working_weight_kg' => 20.123]]], ['sets.0.working_weight_kg']],
+    'weight overflow' => [['sets' => [['repetitions' => 10, 'working_weight_kg' => 1_000_000_000_000_000]]], ['sets.0.working_weight_kg']],
+]);
+
+it('returns stable errors for inaccessible replacement targets and incompatible states', function () use ($createProgram): void {
+    $user = User::factory()->create();
+    [$program, $source, $other] = $createProgram($user);
+    $candidate = Exercise::factory()->create();
+    Sanctum::actingAs($user);
+    $sessionId = expect($this->putJson('/api/workout-sessions/active', [
+        'training_program_id' => $program->id,
+    ])->assertOk()->json('data.id'))->toBeInt()->value;
+    $base = "/api/workout-sessions/{$sessionId}/exercises/{$source->id}/replace";
+    $payload = [
+        'request_id' => '550e8400-e29b-41d4-a716-446655440000',
+        'replacement_exercise_id' => $candidate->id,
+        'sets' => [['repetitions' => 10, 'working_weight_kg' => 20]],
+    ];
+
+    Sanctum::actingAs(User::factory()->create());
+    $this->postJson($base, $payload)
+        ->assertNotFound()
+        ->assertJsonPath('code', 'workout_session_not_found');
+    Sanctum::actingAs($user);
+    $this->postJson('/api/workout-sessions/999999/exercises/1/replace', $payload)
+        ->assertNotFound()
+        ->assertJsonPath('code', 'workout_session_not_found');
+    $this->postJson("/api/workout-sessions/{$sessionId}/exercises/999999/replace", $payload)
+        ->assertNotFound()
+        ->assertJsonPath('code', 'workout_exercise_not_found');
+    $this->postJson($base, [...$payload, 'replacement_exercise_id' => 999999])
+        ->assertUnprocessable()
+        ->assertJsonPath('code', 'workout_replacement_candidate_not_found');
+    $this->postJson($base, [...$payload, 'replacement_exercise_id' => $source->id])
+        ->assertConflict()
+        ->assertJsonPath('code', 'invalid_workout_exercise_replacement');
+    $this->postJson($base, [...$payload, 'replacement_exercise_id' => $other->id])
+        ->assertConflict()
+        ->assertJsonPath('code', 'exercise_already_added_to_workout');
+    $this->postJson("/api/workout-sessions/{$sessionId}/exercises/{$source->id}/skip")->assertOk();
+    $this->postJson($base, $payload)
+        ->assertConflict()
+        ->assertJsonPath('code', 'workout_exercise_not_editable');
+    $this->postJson("/api/workout-sessions/{$sessionId}/exercises/{$source->id}/reopen")->assertOk();
+    $program->delete();
+    $this->postJson($base, [...$payload, 'replace_in_plan' => true])
+        ->assertConflict()
+        ->assertJsonPath('code', 'workout_replacement_plan_conflict');
+    $this->getJson('/api/workout-sessions/active')
+        ->assertOk()
+        ->assertJsonPath('data.exercises.0.replacement', null);
+    $this->postJson("/api/workout-sessions/{$sessionId}/cancel")->assertOk();
+    $this->postJson($base, $payload)
+        ->assertConflict()
+        ->assertJsonPath('code', 'workout_session_not_in_progress');
+});
+
+it('accepts the maximum replacement set count and safe weight', function () use ($createProgram): void {
+    $user = User::factory()->create();
+    [$program, $source] = $createProgram($user);
+    $candidate = Exercise::factory()->create();
+    Sanctum::actingAs($user);
+    $sessionId = expect($this->putJson('/api/workout-sessions/active', [
+        'training_program_id' => $program->id,
+    ])->assertOk()->json('data.id'))->toBeInt()->value;
+
+    $this->postJson("/api/workout-sessions/{$sessionId}/exercises/{$source->id}/replace", [
+        'request_id' => '550e8400-e29b-41d4-a716-446655440000',
+        'replacement_exercise_id' => $candidate->id,
+        'sets' => array_fill(0, 100, ['repetitions' => 10, 'working_weight_kg' => 1_000_000_000]),
+    ])
+        ->assertOk()
+        ->assertJsonCount(100, 'data.exercises.0.sets')
+        ->assertJsonPath('data.exercises.0.sets.99.position', 100)
+        ->assertJsonPath('data.exercises.0.sets.99.working_weight_kg', 1_000_000_000);
+});
+
+it('explains the required replacement load without referring to completion', function (): void {
+    Sanctum::actingAs(User::factory()->create());
+
+    $this->postJson('/api/workout-sessions/1/exercises/1/replace', [
+        'request_id' => '550e8400-e29b-41d4-a716-446655440000',
+        'replacement_exercise_id' => 1,
+        'sets' => [],
+    ])
+        ->assertUnprocessable()
+        ->assertJsonPath('errors.sets.0', 'Для замены упражнения добавьте хотя бы один подход.');
 });

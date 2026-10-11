@@ -1,0 +1,29 @@
+{
+    "workout_session_id": 51,
+    "user_id": 7,
+    "training_program_id": 11,
+    "program_name": "Грудь и трицепс",
+    "completed_at": "2026-09-15T12:00:00.000000Z",
+    "exercises": [
+        {
+            "exercise_id": 10,
+            "name": "Жим лежа",
+            "position": 1,
+            "status": "completed",
+            "planned_sets": [
+                {
+                    "position": 1,
+                    "repetitions": 10,
+                    "working_weight_grams": 50000
+                }
+            ],
+            "actual_sets": [
+                {
+                    "position": 1,
+                    "repetitions": 10,
+                    "working_weight_grams": 50000
+                }
+            ]
+        }
+    ]
+}

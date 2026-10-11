@@ -12,6 +12,7 @@ use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Models\PlannedExerci
 use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Models\PlannedSetModel;
 use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Models\TrainingProgramModel;
 use Illuminate\Database\DatabaseManager;
+use UnexpectedValueException;
 
 final readonly class EloquentTrainingProgramSnapshotProvider implements TrainingProgramSnapshotProvider
 {
@@ -33,6 +34,19 @@ final readonly class EloquentTrainingProgramSnapshotProvider implements Training
             }
 
             $program->load('plannedExercises.exercise', 'plannedExercises.plannedSets');
+            $revisions = $this->database->table('workout_plan_change_barriers')
+                ->where('user_id', $userId->value)
+                ->where('training_program_id', $trainingProgramId->value)
+                ->whereIn('exercise_id', $program->plannedExercises->pluck('exercise_id'))
+                ->sharedLock()
+                ->pluck('revision', 'exercise_id')
+                ->map(static function (mixed $revision): int {
+                    if (! is_int($revision) && ! is_string($revision)) {
+                        throw new UnexpectedValueException('Некорректная версия плана.');
+                    }
+
+                    return (int) $revision;
+                });
             $exercises = array_values($program->plannedExercises
                 ->map(static fn (PlannedExerciseModel $exercise): PlannedExerciseSnapshotData => new PlannedExerciseSnapshotData(
                     $exercise->exercise_id,
@@ -45,6 +59,7 @@ final readonly class EloquentTrainingProgramSnapshotProvider implements Training
                         ))
                         ->all()),
                     $exercise->position,
+                    $revisions->get($exercise->exercise_id, 0),
                 ))
                 ->all());
 

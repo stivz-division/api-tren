@@ -25,7 +25,11 @@ final readonly class EloquentWorkoutSessionHistoryProvider implements WorkoutSes
                 WorkoutSessionStatus::Completed->value,
                 WorkoutSessionStatus::Cancelled->value,
             ])
-            ->with('workoutExercises.plannedSets', 'workoutExercises.workoutSets')
+            ->with(
+                'workoutExercises.plannedSets',
+                'workoutExercises.workoutSets',
+                'workoutExercises.replacements.plannedSets',
+            )
             ->orderByDesc('started_at')
             ->orderByDesc('id')
             ->cursorPaginate($perPage, ['*'], 'cursor', $cursor);

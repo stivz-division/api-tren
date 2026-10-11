@@ -161,3 +161,39 @@ it('returns 422 when the cursor is invalid', function (string $cursor): void {
     'invalid started at' => 'eyJzdGFydGVkX2F0Ijoibm90LWEtZGF0ZSIsImlkIjoxLCJfcG9pbnRzVG9OZXh0SXRlbXMiOnRydWV9',
     'null byte in started at' => 'eyJzdGFydGVkX2F0IjoiMjAyNi0wOS0xMyAwOTowMDowMFx1MDAwMCIsImlkIjoxLCJfcG9pbnRzVG9OZXh0SXRlbXMiOnRydWV9',
 ]);
+
+it('exposes replacement snapshots in history without needing a catalog record', function (bool $replaceInPlan) use ($createSession): void {
+    $user = User::factory()->create();
+    $session = $createSession($user, 'completed', '2026-09-13 09:00:00 UTC', 'История замены');
+    $exercise = $session->workoutExercises()->firstOrFail();
+    $replacement = $exercise->replacements()->create([
+        'sequence' => 1,
+        'request_id' => '550e8400-e29b-41d4-a716-446655440000',
+        'exercise_id' => 900,
+        'exercise_name' => 'Новый жим',
+        'replace_in_plan' => $replaceInPlan,
+        'created_at' => new DateTimeImmutable('2026-09-13 09:30:00 UTC'),
+    ]);
+    $replacement->plannedSets()->create([
+        'position' => 1,
+        'repetitions' => 12,
+        'working_weight_grams' => 25_250,
+    ]);
+    Sanctum::actingAs($user);
+
+    $this->getJson('/api/workout-sessions')
+        ->assertOk()
+        ->assertJsonPath('data.0.exercises.0.exercise_id', 501)
+        ->assertJsonPath('data.0.exercises.0.name', 'Жим лежа')
+        ->assertJsonPath('data.0.exercises.0.planned_sets.0.working_weight_kg', 90)
+        ->assertJsonPath('data.0.exercises.0.effective_exercise', [
+            'exercise_id' => 900,
+            'name' => 'Новый жим',
+            'planned_sets' => [['position' => 1, 'repetitions' => 12, 'working_weight_kg' => 25.25]],
+        ])
+        ->assertJsonPath('data.0.exercises.0.replacement', [
+            'request_id' => '550e8400-e29b-41d4-a716-446655440000',
+            'replace_in_plan' => $replaceInPlan,
+        ])
+        ->assertJsonPath('data.0.exercises.0.included_in_analysis', $replaceInPlan);
+})->with([false, true]);

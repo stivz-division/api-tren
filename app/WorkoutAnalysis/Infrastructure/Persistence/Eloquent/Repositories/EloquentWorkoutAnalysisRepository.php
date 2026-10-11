@@ -14,7 +14,6 @@ use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAIResult;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAnalysisId;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\AnalysisContextSnapshotCodec;
-use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\AnalysisPayload;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\CompletedWorkoutSnapshotCodec;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\RecommendationBatchCodec;
 use App\WorkoutAnalysis\Infrastructure\Persistence\Eloquent\Mappers\RecommendationProgramContextCodec;
@@ -113,7 +112,7 @@ final readonly class EloquentWorkoutAnalysisRepository implements WorkoutAnalysi
                     'context_version' => AnalysisContextSnapshotCodec::VERSION,
                 ]);
             }
-            if (! AnalysisPayload::equals($model->snapshot, $this->snapshotCodec->encode($deviations->snapshot))) {
+            if ($persisted->snapshot != $deviations->snapshot) {
                 throw new LogicException('Нельзя изменить сохранённый снимок тренировки.');
             }
             $this->assertHistoryUnchanged($persisted, $deviations);
@@ -132,7 +131,11 @@ final readonly class EloquentWorkoutAnalysisRepository implements WorkoutAnalysi
                     }
                 }
             }
-            $stage->update($this->stageAttributes($deviations));
+            $attributes = $this->stageAttributes($deviations);
+            if ($persisted->result !== null) {
+                unset($attributes['result'], $attributes['result_version']);
+            }
+            $stage->update($attributes);
         });
     }
 

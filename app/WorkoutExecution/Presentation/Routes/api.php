@@ -6,6 +6,7 @@ use App\WorkoutExecution\Presentation\Http\Controllers\CompleteWorkoutSessionCon
 use App\WorkoutExecution\Presentation\Http\Controllers\GetActiveWorkoutSessionController;
 use App\WorkoutExecution\Presentation\Http\Controllers\GetWorkoutSessionHistoryController;
 use App\WorkoutExecution\Presentation\Http\Controllers\ReopenExerciseController;
+use App\WorkoutExecution\Presentation\Http\Controllers\ReplaceExerciseController;
 use App\WorkoutExecution\Presentation\Http\Controllers\SaveExerciseProgressController;
 use App\WorkoutExecution\Presentation\Http\Controllers\SkipExerciseController;
 use App\WorkoutExecution\Presentation\Http\Controllers\StartWorkoutSessionController;
@@ -30,6 +31,12 @@ Route::middleware('auth:sanctum')->group(function (): void {
     )
         ->whereNumber(['workoutSessionId', 'exerciseId'])
         ->name('api.workout-sessions.exercises.complete');
+    Route::post(
+        'workout-sessions/{workoutSessionId}/exercises/{exerciseId}/replace',
+        ReplaceExerciseController::class,
+    )
+        ->whereNumber(['workoutSessionId', 'exerciseId'])
+        ->name('api.workout-sessions.exercises.replace');
     Route::post(
         'workout-sessions/{workoutSessionId}/exercises/{exerciseId}/skip',
         SkipExerciseController::class,

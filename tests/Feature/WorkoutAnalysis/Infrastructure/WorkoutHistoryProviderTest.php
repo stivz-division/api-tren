@@ -198,3 +198,35 @@ it('loads saved recommendation decisions without rebuilding old context and dist
     WorkoutAnalysisModel::query()->whereKey($id->value)->update(['context_version' => 999]);
     expect(app(PrepareWorkoutAnalysisContext::class)->handle($input))->toEqual($captured);
 })->with(['applied' => true, 'empty' => false]);
+
+it('preserves one time exclusions in both completed analysis history and session fallback', function (bool $cached) use ($session, $analyze): void {
+    Queue::fake();
+    $this->travelTo(new DateTimeImmutable('2026-09-21T12:00:00Z'));
+    $user = User::factory()->create();
+    $past = $session($user, 11, '2026-09-12 12:00:00');
+    $exercise = $past->workoutExercises()->sole();
+    $replacement = $exercise->replacements()->create([
+        'sequence' => 1, 'request_id' => '550e8400-e29b-41d4-a716-446655440000',
+        'exercise_id' => 42, 'exercise_name' => 'Разовая замена', 'replace_in_plan' => false,
+        'created_at' => '2026-09-12 11:00:00', 'plan_revision_after' => null,
+    ]);
+    $replacement->plannedSets()->create(['position' => 1, 'repetitions' => 15, 'working_weight_grams' => 99000]);
+    if ($cached) {
+        $analyze($past);
+    }
+    $current = $analyze($session($user, 11, '2026-09-14 12:00:00'));
+    $id = $current->id ?? throw new LogicException('Нет анализа.');
+
+    $context = app(PrepareWorkoutAnalysisContext::class)->handle(new PrepareWorkoutAnalysisContextInput($user->id, $id->value));
+
+    $history = $context->sameProgram->all()[0]->deviations;
+    expect($history->hasComparableExercises)->toBeFalse();
+    expect($history->volume->planned)->toBe(0);
+    expect($history->volume->actual)->toBe(0);
+    expect($history->snapshot->exercises->all())->toBe([]);
+    expect($history->snapshot->excludedExercises[0]->sourceExerciseId->value)->toBe(31);
+    expect($history->snapshot->excludedExercises[0]->planExerciseId->value)->toBe(31);
+    expect(app(PrepareWorkoutAnalysisContext::class)->handle(new PrepareWorkoutAnalysisContextInput($user->id, $id->value)))
+        ->toEqual($context);
+    Queue::assertNothingPushed();
+})->with(['session fallback' => false, 'stored comparison' => true]);

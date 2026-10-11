@@ -7,7 +7,10 @@ use App\WorkoutExecution\Domain\Entities\WorkoutSession;
 use App\WorkoutExecution\Domain\Enums\ScheduledWeekday;
 use App\WorkoutExecution\Domain\Enums\WorkoutExerciseStatus;
 use App\WorkoutExecution\Domain\Enums\WorkoutSessionStatus;
+use App\WorkoutExecution\Domain\Exceptions\ExerciseAlreadyAddedToWorkout;
 use App\WorkoutExecution\Domain\Exceptions\InvalidWorkoutSessionState;
+use App\WorkoutExecution\Domain\Exceptions\WorkoutExerciseNotFound;
+use App\WorkoutExecution\Domain\Exceptions\WorkoutReplacementRequestConflict;
 use App\WorkoutExecution\Domain\Exceptions\WorkoutResolutionBeforeStart;
 use App\WorkoutExecution\Domain\Exceptions\WorkoutSessionHasPendingExercises;
 use App\WorkoutExecution\Domain\Exceptions\WorkoutSessionIsNotInProgress;
@@ -22,6 +25,7 @@ use App\WorkoutExecution\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutExecution\Domain\ValueObjects\TrainingProgramSnapshot;
 use App\WorkoutExecution\Domain\ValueObjects\UserId;
 use App\WorkoutExecution\Domain\ValueObjects\WorkingWeight;
+use App\WorkoutExecution\Domain\ValueObjects\WorkoutExerciseReplacement;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSet;
 use Tests\Support\WorkoutExecution\WorkoutSessionFixture;
@@ -58,6 +62,122 @@ $singleSet = static fn (int $repetitions, int $weight): WorkoutSetCollection => 
         new WorkingWeight($weight),
     ),
 );
+
+$replacement = static fn (int $candidate = 30, int $sequence = 1): WorkoutExerciseReplacement => new WorkoutExerciseReplacement(
+    $sequence,
+    sprintf('550e8400-e29b-41d4-a716-%012d', $sequence),
+    new ExerciseSnapshot(new ExerciseId($candidate), new ExerciseName('Новое упражнение'), new ExercisePosition(1)),
+    new WorkoutSetCollection(new WorkoutSet(new SetPosition(1), new Repetitions(10), new WorkingWeight(25_000))),
+    false,
+    new DateTimeImmutable('2026-09-15 20:00:00 UTC'),
+);
+
+it('continues exercise commands using the source catalogue ID after replacement', function () use ($createSession, $replacement, $singleSet) {
+    $session = $createSession();
+    $session->replaceExercise(new ExerciseId(10), $replacement());
+
+    $session->completeExercise(new ExerciseId(10), $singleSet(8, 30_000));
+
+    expect($session->workoutExercises()[0]->snapshot->exerciseId->value)->toBe(10);
+    expect($session->workoutExercises()[0]->effectiveSnapshot()->exerciseId->value)->toBe(30);
+    expect($session->workoutExercises()[0]->status)->toBe(WorkoutExerciseStatus::Completed);
+    expect(fn () => $session->reopenExercise(new ExerciseId(30)))->toThrow(WorkoutExerciseNotFound::class);
+});
+
+it('replays replacements after completion without resetting exercise progress', function () use ($createSession, $replacement, $singleSet, $startedAt) {
+    $session = $createSession();
+    $record = $replacement();
+    $session->replaceExercise(new ExerciseId(10), $record);
+    $session->completeExercise(new ExerciseId(10), $singleSet(8, 30_000));
+    $session->skipExercise(new ExerciseId(20));
+    $session->complete($startedAt->modify('+1 hour'));
+
+    expect($session->replaceExercise(new ExerciseId(10), $record))->toBeFalse();
+    expect($session->isReplacementReplay(new ExerciseId(10), $record->requestId, new ExerciseId(30), false, new WorkoutSetCollection(...$record->plannedSets())))->toBeTrue();
+    expect($session->workoutExercises()[0]->workoutSets()[0]->workingWeight->grams)->toBe(30_000);
+    expect($session->status)->toBe(WorkoutSessionStatus::Completed);
+    expect(fn () => $session->replaceExercise(new ExerciseId(10), $replacement(40, 2)))->toThrow(WorkoutSessionIsNotInProgress::class);
+    expect(fn () => $session->isReplacementReplay(new ExerciseId(10), $record->requestId, new ExerciseId(40), false, new WorkoutSetCollection(...$record->plannedSets())))->toThrow(WorkoutReplacementRequestConflict::class);
+});
+
+it('rejects candidates already effective in another position without changing state', function () use ($createSession, $replacement) {
+    $session = $createSession();
+
+    expect(fn () => $session->assertCanReplaceExercise(new ExerciseId(10), new ExerciseId(20)))->toThrow(ExerciseAlreadyAddedToWorkout::class);
+    expect(fn () => $session->replaceExercise(new ExerciseId(10), $replacement(20)))->toThrow(ExerciseAlreadyAddedToWorkout::class);
+    expect($session->workoutExercises()[0]->replacements())->toBe([]);
+});
+
+it('rejects duplicating a replacement from another position', function () use ($createSession, $replacement) {
+    $session = $createSession();
+    $record = $replacement();
+    $session->replaceExercise(new ExerciseId(10), $record);
+    $duplicate = new WorkoutExerciseReplacement(
+        1, $record->requestId,
+        new ExerciseSnapshot(new ExerciseId(30), new ExerciseName('Новое'), new ExercisePosition(2)),
+        new WorkoutSetCollection(...$record->plannedSets()), false, $record->createdAt,
+    );
+
+    expect(fn () => $session->replaceExercise(new ExerciseId(20), $duplicate))->toThrow(ExerciseAlreadyAddedToWorkout::class);
+    expect($session->workoutExercises()[1]->replacements())->toBe([]);
+});
+
+it('protects replacements and progress from mutations through exposed exercise copies', function () use ($createSession, $replacement, $singleSet) {
+    $session = $createSession();
+    $session->replaceExercise(new ExerciseId(10), $replacement());
+    $copy = $session->workoutExercises()[0];
+
+    $copy->replace($replacement(40, 2));
+    $copy->saveProgress($singleSet(1, 1_000));
+
+    expect($session->workoutExercises()[0]->effectiveSnapshot()->exerciseId->value)->toBe(30);
+    expect($session->workoutExercises()[0]->replacements())->toHaveCount(1);
+    expect($session->workoutExercises()[0]->workoutSets()[0]->workingWeight->grams)->toBe(25_000);
+});
+
+it('preserves the source plan revision when initializing a fresh session', function () use ($workoutExercise, $startedAt) {
+    $original = $workoutExercise(10, 1);
+    $exercise = WorkoutExercise::fromPlan($original->snapshot, new WorkoutSetCollection(...$original->plannedSets()), 7);
+    $session = WorkoutSession::start(
+        new UserId(42), new TrainingProgramSnapshot(new TrainingProgramId(7), new ProgramName('План'), ScheduledWeekday::Monday),
+        new WorkoutExerciseCollection($exercise), $startedAt,
+    );
+
+    expect($session->workoutExercises()[0]->sourcePlanRevision)->toBe(7);
+    expect($session->workoutExercises()[0]->planBaselineRevision())->toBe(7);
+});
+
+it('replays a recorded replacement after cancellation but rejects a new one', function () use ($createSession, $replacement, $startedAt) {
+    $session = $createSession();
+    $record = $replacement();
+    $session->replaceExercise(new ExerciseId(10), $record);
+    $session->cancel($startedAt->modify('+1 hour'));
+
+    expect($session->replaceExercise(new ExerciseId(10), $record))->toBeFalse();
+    expect(fn () => $session->replaceExercise(new ExerciseId(10), $replacement(40, 2)))
+        ->toThrow(WorkoutSessionIsNotInProgress::class);
+    expect($session->workoutExercises()[0]->replacements())->toHaveCount(1);
+});
+
+it('allows an exercise ID released by another position while preserving source addresses', function () use ($createSession, $replacement) {
+    $session = $createSession();
+    $firstRecord = $replacement();
+    $session->replaceExercise(new ExerciseId(10), $firstRecord);
+    $secondRecord = new WorkoutExerciseReplacement(
+        1, $firstRecord->requestId,
+        new ExerciseSnapshot(new ExerciseId(10), new ExerciseName('Освободившееся упражнение'), new ExercisePosition(2)),
+        new WorkoutSetCollection(...$firstRecord->plannedSets()), false, $firstRecord->createdAt,
+    );
+
+    $session->replaceExercise(new ExerciseId(20), $secondRecord);
+    $session->skipExercise(new ExerciseId(10));
+    $session->completeExercise(new ExerciseId(20), new WorkoutSetCollection(...$secondRecord->plannedSets()));
+
+    expect($session->workoutExercises()[0]->effectiveSnapshot()->exerciseId->value)->toBe(30);
+    expect($session->workoutExercises()[1]->effectiveSnapshot()->exerciseId->value)->toBe(10);
+    expect($session->workoutExercises()[0]->status)->toBe(WorkoutExerciseStatus::Skipped);
+    expect($session->workoutExercises()[1]->status)->toBe(WorkoutExerciseStatus::Completed);
+});
 
 it('starts a session from a program snapshot on any actual weekday', function () use ($createSession) {
     $session = $createSession();

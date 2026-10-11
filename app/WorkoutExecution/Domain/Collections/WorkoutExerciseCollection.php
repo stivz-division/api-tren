@@ -66,6 +66,7 @@ final class WorkoutExerciseCollection implements Countable, IteratorAggregate
             static fn (WorkoutExercise $exercise): WorkoutExercise => WorkoutExercise::fromPlan(
                 $exercise->snapshot,
                 new WorkoutSetCollection(...$exercise->plannedSets()),
+                $exercise->sourcePlanRevision,
             ),
             $this->all(),
         );
@@ -82,6 +83,18 @@ final class WorkoutExerciseCollection implements Countable, IteratorAggregate
         }
 
         return true;
+    }
+
+    public function assertEffectiveExerciseAvailable(ExerciseId $sourceExerciseId, ExerciseId $exerciseId): void
+    {
+        foreach ($this->exercises as $exercise) {
+            if (
+                $exercise->snapshot->exerciseId->value !== $sourceExerciseId->value
+                && $exercise->effectiveSnapshot()->exerciseId->value === $exerciseId->value
+            ) {
+                throw new ExerciseAlreadyAddedToWorkout($exerciseId);
+            }
+        }
     }
 
     public function count(): int
@@ -103,6 +116,7 @@ final class WorkoutExerciseCollection implements Countable, IteratorAggregate
             throw new ExerciseAlreadyAddedToWorkout($exerciseId);
         }
 
+        $this->assertEffectiveExerciseAvailable($exerciseId, $exercise->effectiveSnapshot()->exerciseId);
         $this->exercises[$exerciseId->value] = $exercise;
     }
 

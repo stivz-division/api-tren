@@ -1,12 +1,18 @@
 <?php
 
+use App\WorkoutAnalysis\Domain\Collections\ExercisePerformanceCollection;
 use App\WorkoutAnalysis\Domain\Collections\WorkoutHistoryWindow;
 use App\WorkoutAnalysis\Domain\Enums\ExerciseCompletionStatus;
 use App\WorkoutAnalysis\Domain\Services\RecommendationAdmissionPolicy;
 use App\WorkoutAnalysis\Domain\Services\RecommendationCounterCalculator;
+use App\WorkoutAnalysis\Domain\Services\WorkoutDeviationCalculator;
 use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisContextSnapshot;
 use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisEvidenceReference;
+use App\WorkoutAnalysis\Domain\ValueObjects\CompletedWorkoutSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExcludedExerciseSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseId;
 use App\WorkoutAnalysis\Domain\ValueObjects\ExercisePerformanceSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutAnalysis\Domain\ValueObjects\RecommendationBatch;
 use App\WorkoutAnalysis\Domain\ValueObjects\RecommendationEligibility;
 use App\WorkoutAnalysis\Domain\ValueObjects\RecommendationProposal;
@@ -166,4 +172,82 @@ it('admits ordinary replacement after 28 completions with interrupted successes 
     expect($result->rejectedReasons)->toBe([]);
     expect($result->proposals)->toHaveCount(1);
     expect($result->proposals[0]->replacementExerciseId)->toBe(11);
+});
+
+$excludedWorkout = static function (int $sessionId, string $completedAt, bool $includeSameId = false): CompletedWorkoutSnapshot {
+    $base = Fixture::result(sessionId: $sessionId, completedAt: $completedAt)->snapshot;
+
+    return new CompletedWorkoutSnapshot(
+        $base->workoutSessionId,
+        $base->userId,
+        $base->trainingProgramId,
+        $base->programName,
+        $base->completedAt,
+        new ExercisePerformanceCollection(...($includeSameId ? [Fixture::exercise(position: 2)] : [])),
+        [new ExcludedExerciseSnapshot(
+            new ExerciseId(20), new ExerciseId(10),
+            new ExercisePosition(1),
+        )],
+    );
+};
+
+it('skips excluded observations without adding successes or failures and preserves program intervals', function (bool $successful) use ($excludedWorkout): void {
+    $old = Fixture::result(sessionId: 1, completedAt: '2026-09-10T12:00:00Z',
+        exercise: Fixture::exercise(actual: [[$successful ? 10 : 8, 50000]]))->snapshot;
+    $excluded = $excludedWorkout(2, '2026-09-11T12:00:00Z');
+    $current = Fixture::result(sessionId: 3, completedAt: '2026-09-12T12:00:00Z',
+        exercise: Fixture::exercise(actual: [[$successful ? 10 : 8, 50000]]))->snapshot;
+
+    $result = (new RecommendationCounterCalculator)->calculate(10, Fixture::sets([[10, 50000]]), [$old, $excluded, $current]);
+
+    expect($result->successes)->toBe($successful ? 2 : 0);
+    expect($result->failures)->toBe($successful ? 0 : 2);
+    expect($result->completedSinceReplacement)->toBe(3);
+    expect($result->currentlySuccessful)->toBe($successful);
+})->with([true, false]);
+
+it('uses the nearest comparable success while an excluded latest observation adds only program intervals', function () use ($excludedWorkout): void {
+    $old = Fixture::result(sessionId: 1, completedAt: '2026-09-10T12:00:00Z')->snapshot;
+    $excluded = $excludedWorkout(2, '2026-09-11T12:00:00Z');
+
+    $result = (new RecommendationCounterCalculator)->calculate(10, Fixture::sets([[10, 50000]]), [$old, $excluded]);
+
+    expect($result->successes)->toBe(1);
+    expect($result->failures)->toBe(0);
+    expect($result->currentlySuccessful)->toBeTrue();
+    expect($result->completedSinceReplacement)->toBe(2);
+});
+
+it('still breaks a series for genuinely missing exercises and plan barriers around exclusions', function () use ($excludedWorkout): void {
+    $old = Fixture::result(sessionId: 1, completedAt: '2026-09-10T12:00:00Z')->snapshot;
+    $missing = Fixture::result(sessionId: 2, completedAt: '2026-09-11T12:00:00Z', exercise: Fixture::exercise(id: 99))->snapshot;
+    $excluded = $excludedWorkout(3, '2026-09-12T12:00:00Z');
+    $calculator = new RecommendationCounterCalculator;
+
+    expect($calculator->calculate(10, Fixture::sets([[10, 50000]]), [$old, $missing, $excluded])->successes)->toBe(0);
+    expect($calculator->calculate(10, Fixture::sets([[10, 50000]]), [$old, $excluded],
+        lastPlanChangeAt: new DateTimeImmutable('2026-09-11T12:00:00Z'))->successes)->toBe(0);
+});
+
+it('rejects every recommendation type for an excluded current source despite historical eligibility', function (string $type) use ($excludedWorkout, $program, $proposal): void {
+    $snapshot = $excludedWorkout(51, '2026-09-15T12:00:00Z');
+    $context = new AnalysisContextSnapshot((new WorkoutDeviationCalculator)->calculate($snapshot),
+        new WorkoutHistoryWindow, new WorkoutHistoryWindow, new DateTimeImmutable('2026-09-15T12:01:00Z'));
+    $ai = new WorkoutAIResult(new WorkoutAnalysisId(91), $context, 'Нет данных.', 'История.', 'model', 'response', 1, 1);
+
+    $result = (new RecommendationAdmissionPolicy)->admit(new RecommendationBatch([$proposal($type, $type === 'replacement' ? 11 : null)]), $ai, $program());
+
+    expect($result->proposals)->toBe([]);
+    expect($result->rejectedReasons)->toBe(['10:eligibility_not_met']);
+})->with(['progression', 'adjustment', 'replacement']);
+
+it('uses an included observation even if a descriptor at another position shares its plan id', function () use ($excludedWorkout, $program): void {
+    $snapshot = $excludedWorkout(51, '2026-09-15T12:00:00Z', true);
+    $ai = new WorkoutAIResult(new WorkoutAnalysisId(91), new AnalysisContextSnapshot(
+        (new WorkoutDeviationCalculator)->calculate($snapshot),
+        new WorkoutHistoryWindow, new WorkoutHistoryWindow, new DateTimeImmutable('2026-09-15T12:01:00Z')),
+        'План выполнен.', 'История.', 'model', 'response', 1, 1);
+
+    expect((new RecommendationCounterCalculator)->calculate(10, Fixture::sets([[10, 50000]]), [$snapshot])->successes)->toBe(1);
+    expect((new RecommendationAdmissionPolicy)->allowedChangeTypes($ai, $program()['exercises'][0]))->toBe(['progression', 'replacement']);
 });

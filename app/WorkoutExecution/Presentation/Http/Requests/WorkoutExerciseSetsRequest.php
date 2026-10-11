@@ -17,12 +17,13 @@ abstract class WorkoutExerciseSetsRequest extends WorkoutExerciseRouteRequest
             'sets' => [$presenceRule, 'array', 'list', 'min:'.$this->minimumSets(), 'max:100'],
             'sets.*' => ['array:repetitions,working_weight_kg'],
             'sets.*.repetitions' => ['required', 'integer', 'min:1'],
+            /** Kilograms with at most two decimal places. */
             'sets.*.working_weight_kg' => [
                 'required',
                 'numeric',
+                'decimal:0,2',
                 'min:0',
                 'max:'.WorkingWeightConverter::MAX_KILOGRAMS,
-                'decimal:0,2',
             ],
         ];
     }

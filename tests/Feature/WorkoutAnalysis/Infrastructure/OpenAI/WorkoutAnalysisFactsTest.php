@@ -1,8 +1,15 @@
 <?php
 
+use App\WorkoutAnalysis\Domain\Collections\ExercisePerformanceCollection;
 use App\WorkoutAnalysis\Domain\Collections\WorkoutHistoryWindow;
+use App\WorkoutAnalysis\Domain\Services\WorkoutDeviationCalculator;
 use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisContextSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\CompletedWorkoutSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExcludedExerciseSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseId;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutHistoryEntry;
+use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutAnalysis\Infrastructure\Integrations\OpenAI\WorkoutAnalysisFacts;
 use Tests\Support\WorkoutAnalysis\WorkoutAnalysisFixture as Fixture;
 
@@ -114,3 +121,65 @@ it('rejects invented duplicated or free text fact selections', function (mixed $
     'nonstring id' => [[42]],
     'object' => [(object) ['fact_id' => 'current:summary']],
 ]);
+
+it('does not compare aggregate volume when included exercise identities differ', function (): void {
+    $context = new AnalysisContextSnapshot(
+        Fixture::result(exercise: Fixture::exercise(id: 20, planned: [[2, 1000]], actual: [[2, 1000]])),
+        new WorkoutHistoryWindow(3, new WorkoutHistoryEntry(Fixture::result(sessionId: 50, completedAt: '2026-09-14T12:00:00Z'))),
+        new WorkoutHistoryWindow(3), new DateTimeImmutable('2026-09-15T12:01:00Z'),
+    );
+
+    $text = app(WorkoutAnalysisFacts::class)->catalog($context)['history']['history:50:summary']['text'];
+
+    expect($text)->toContain('Состав учитываемых упражнений различается', 'не сопоставляется')
+        ->not->toContain('500 → 2')
+        ->not->toContain('-99,6%');
+});
+
+it('publishes a mandatory absence of comparable data instead of zero performance', function (): void {
+    $base = Fixture::result()->snapshot;
+    $snapshot = new CompletedWorkoutSnapshot(
+        $base->workoutSessionId,
+        $base->userId,
+        $base->trainingProgramId,
+        $base->programName,
+        $base->completedAt,
+        new ExercisePerformanceCollection,
+        [new ExcludedExerciseSnapshot(
+            new ExerciseId(10), new ExerciseId(10),
+            new ExercisePosition(1),
+        )],
+    );
+    $context = new AnalysisContextSnapshot((new WorkoutDeviationCalculator)->calculate($snapshot),
+        new WorkoutHistoryWindow, new WorkoutHistoryWindow, new DateTimeImmutable('2026-09-15T12:01:00Z'));
+
+    $facts = app(WorkoutAnalysisFacts::class)->catalog($context);
+
+    expect($facts['current_workout'])->toHaveCount(1);
+    expect($facts['current_workout']['current:summary']['text'])->toContain('Нет упражнений для сравнения', 'нет данных')
+        ->not->toContain('План → факт')
+        ->not->toContain('План выполнен');
+    expect($facts['current_workout']['current:summary']['required'])->toBeTrue();
+});
+
+it('describes absent comparison data accurately when both historical and current workouts are excluded', function (): void {
+    $base = Fixture::result()->snapshot;
+    $makeSnapshot = static fn (int $id, string $completedAt): CompletedWorkoutSnapshot => new CompletedWorkoutSnapshot(
+        new WorkoutSessionId($id),
+        $base->userId, $base->trainingProgramId, $base->programName, new DateTimeImmutable($completedAt),
+        new ExercisePerformanceCollection,
+        [new ExcludedExerciseSnapshot(new ExerciseId(10), new ExerciseId(10), new ExercisePosition(1))],
+    );
+    $calculator = new WorkoutDeviationCalculator;
+    $context = new AnalysisContextSnapshot(
+        $calculator->calculate($makeSnapshot(51, '2026-09-15T12:00:00Z')),
+        new WorkoutHistoryWindow(3, new WorkoutHistoryEntry($calculator->calculate($makeSnapshot(50, '2026-09-14T12:00:00Z')))),
+        new WorkoutHistoryWindow, new DateTimeImmutable('2026-09-15T12:01:00Z'),
+    );
+
+    $text = app(WorkoutAnalysisFacts::class)->catalog($context)['history']['history:50:summary']['text'];
+
+    expect($text)->toContain('Нет данных для сопоставления')
+        ->not->toContain('Состав учитываемых упражнений различается')
+        ->not->toContain('0 → 0');
+});

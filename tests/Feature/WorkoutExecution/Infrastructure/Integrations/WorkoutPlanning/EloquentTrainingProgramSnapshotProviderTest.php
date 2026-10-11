@@ -2,6 +2,7 @@
 
 use App\Models\Exercise;
 use App\Models\User;
+use App\WorkoutExecution\Application\Factories\WorkoutSessionFactory;
 use App\WorkoutExecution\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutExecution\Domain\ValueObjects\UserId;
 use App\WorkoutExecution\Infrastructure\Integrations\WorkoutPlanning\EloquentTrainingProgramSnapshotProvider;
@@ -41,6 +42,13 @@ it('returns an ordered immutable snapshot of an owned training program', functio
         ['position' => 2, 'repetitions' => 6, 'working_weight_grams' => 100_000],
         ['position' => 3, 'repetitions' => 1, 'working_weight_grams' => 130_000],
     ]);
+    app(DatabaseManager::class)->table('workout_plan_change_barriers')->insert([
+        'user_id' => $user->id,
+        'training_program_id' => $program->id,
+        'exercise_id' => $benchPress->id,
+        'revision' => 7,
+        'changed_at' => '2026-09-15 15:00:00 UTC',
+    ]);
 
     $snapshot = $provider()->findForUser(
         new TrainingProgramId($program->id),
@@ -72,6 +80,10 @@ it('returns an ordered immutable snapshot of an owned training program', functio
         [$benchPress->id, 'Жим лежа', [[1, 3, 80_000], [2, 6, 100_000], [3, 1, 130_000]], 1],
         [$triceps->id, 'Разгибание на трицепс', [[1, 12, 36_000], [2, 10, 40_000]], 2],
     ]);
+    expect($snapshot->exercises[0]->sourcePlanRevision)->toBe(7);
+    expect($snapshot->exercises[1]->sourcePlanRevision)->toBe(0);
+    $session = (new WorkoutSessionFactory)->create(new UserId($user->id), $snapshot, new DateTimeImmutable('2026-09-15 16:00:00 UTC'));
+    expect(array_map(static fn ($exercise): ?int => $exercise->sourcePlanRevision, $session->workoutExercises()))->toBe([7, 0]);
 });
 
 it('does not expose a training program to another user', function () use ($provider): void {

@@ -38,7 +38,7 @@ it('prepares a persisted context through DI and reuses it after config and time 
     $input = new PrepareWorkoutAnalysisContextInput($analysis->deviations()->snapshot->userId->value, $analysisId->value);
 
     $context = app(PrepareWorkoutAnalysisContext::class)->handle($input);
-    $this->assertDatabaseHas('workout_analyses', ['id' => $analysisId->value, 'context_version' => 1]);
+    $this->assertDatabaseHas('workout_analyses', ['id' => $analysisId->value, 'context_version' => 2]);
     $restored = app(WorkoutAnalysisRepository::class)->findForUser($analysisId, $analysis->deviations()->snapshot->userId);
     expect($restored?->context())->toEqual($context);
     expect($context->sameProgram->limit)->toBe(3);

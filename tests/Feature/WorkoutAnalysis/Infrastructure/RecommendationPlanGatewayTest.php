@@ -261,3 +261,47 @@ it('rolls back both the target update and decision when persisting a changed pla
     expect($item->refresh()->status)->toBe('proposed');
     expect($f['program']->plannedExercises()->firstOrFail()->plannedSets()->firstOrFail()->working_weight_grams)->toBe(50000);
 })->skip(fn () => DB::getDriverName() !== 'sqlite', 'SQLite trigger for the injected persistence failure.');
+
+it('projects replacement history for counters and retains excluded program ids without their loads', function (bool $savedInPlan) use ($fixture): void {
+    $f = $fixture(30);
+    $candidate = Exercise::factory()->create(['name' => 'Разовая замена']);
+    $sessions = WorkoutSessionModel::query()->where('user_id', $f['user']->id)->orderBy('id')->get();
+    foreach ([9, 19, 29] as $index) {
+        $session = $sessions->get($index) ?? throw new LogicException;
+        $exercise = $session->workoutExercises()->where('exercise_id', $f['exercises'][0]->id)->firstOrFail();
+        $replacement = $exercise->replacements()->create([
+            'sequence' => 1, 'request_id' => '550e8400-e29b-41d4-a716-446655440000',
+            'exercise_id' => $candidate->id, 'exercise_name' => $candidate->name,
+            'replace_in_plan' => $savedInPlan && $index === 29, 'created_at' => $session->started_at,
+            'plan_revision_after' => $savedInPlan && $index === 29 ? 1 : null,
+        ]);
+        $sets = [['position' => 1, 'repetitions' => 15, 'working_weight_grams' => 99000]];
+        $replacement->plannedSets()->createMany($sets);
+        $exercise->workoutSets()->delete();
+        $exercise->workoutSets()->createMany($sets);
+    }
+    if ($savedInPlan) {
+        $planned = $f['program']->plannedExercises()->where('exercise_id', $f['exercises'][0]->id)->firstOrFail();
+        $planned->update(['exercise_id' => $candidate->id]);
+        $planned->plannedSets()->delete();
+        $planned->plannedSets()->createMany($sets);
+    }
+    $sessionId = new WorkoutSessionId($f['session']->id);
+    $userId = new UserId($f['user']->id);
+    $data = app(CompletedWorkoutProvider::class)->findForUser($sessionId, $userId) ?? throw new LogicException;
+    $snapshot = app(CompletedWorkoutSnapshotFactory::class)->create($data, $userId, $sessionId);
+    $analysis = WorkoutAnalysis::initialize($snapshot, now()->toDateTimeImmutable());
+
+    $context = DB::transaction(fn () => $f['gateway']->capture($analysis));
+
+    expect(array_column($context['exercises'], 'exercise_id'))->toBe([
+        $savedInPlan ? $candidate->id : $f['exercises'][0]->id, $f['exercises'][1]->id,
+    ]);
+    expect($context['exercises'][0]['sets'])->toBe($savedInPlan ? $sets : []);
+    expect($context['exercises'][0]['successes'])->toBe($savedInPlan ? 1 : 27);
+    expect($context['exercises'][0]['failures'])->toBe(0);
+    expect($context['exercises'][0]['currently_successful'])->toBeTrue();
+    expect($context['exercises'][0]['completed_since_replacement'])->toBe(30);
+    expect($context['exercises'][1]['successes'])->toBe(30);
+    expect(array_column($context['catalog'], 'id'))->toContain($candidate->id);
+})->with(['one time' => false, 'saved in plan' => true]);

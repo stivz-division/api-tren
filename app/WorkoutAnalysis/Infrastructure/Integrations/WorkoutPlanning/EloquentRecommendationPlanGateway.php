@@ -12,6 +12,8 @@ use App\WorkoutAnalysis\Application\Gateways\RecommendationPlanGateway;
 use App\WorkoutAnalysis\Domain\Entities\WorkoutAnalysis;
 use App\WorkoutAnalysis\Domain\Services\RecommendationCounterCalculator;
 use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisEvidenceReference;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseId;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExercisePerformanceSnapshot;
 use App\WorkoutAnalysis\Domain\ValueObjects\HistoricalRecommendation;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutAnalysis\Infrastructure\Integrations\WorkoutExecution\CompletedWorkoutDataMapper;
@@ -58,7 +60,11 @@ final readonly class EloquentRecommendationPlanGateway implements Recommendation
                 $boundary = $snapshot->completedAt->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s.uP');
                 $query->where('completed_at', '<', $boundary)->orWhere(fn ($query) => $query->where('completed_at', $boundary)->where('id', '<=', $snapshot->workoutSessionId->value));
             })
-            ->with('workoutExercises.plannedSets', 'workoutExercises.workoutSets')->orderBy('completed_at')->orderBy('id')->get();
+            ->with([
+                'workoutExercises.plannedSets',
+                'workoutExercises.workoutSets',
+                'workoutExercises.replacements.plannedSets',
+            ])->orderBy('completed_at')->orderBy('id')->get();
         foreach ($sessions as $session) {
             $history[] = $this->snapshotFactory->create($this->workoutMapper->toData($session), $snapshot->userId, new WorkoutSessionId($session->id));
         }
@@ -77,14 +83,22 @@ final readonly class EloquentRecommendationPlanGateway implements Recommendation
             }
         }
         $lastRejected = $rejectedGroups === [] ? null : max($rejectedGroups);
+        $includedIds = array_map(
+            static fn (ExercisePerformanceSnapshot $exercise): int => $exercise->exerciseId->value,
+            $snapshot->exercises->all(),
+        );
         foreach ($program->plannedExercises as $exercise) {
             $sets = $this->plannedSets($exercise);
             $barrier = $this->barrier($userId, $programId, $exercise->exercise_id);
             $eligibility = $this->counters->calculate($exercise->exercise_id, $this->mapper->sets($sets), $history,
                 $lastReplacement?->toDateTimeImmutable(), $lastRejected?->toDateTimeImmutable(),
                 $barrier === null ? null : new DateTimeImmutable($barrier->changed_at));
+            $isExcluded = ! in_array($exercise->exercise_id, $includedIds, true)
+                && $snapshot->excludesPlanExercise(new ExerciseId($exercise->exercise_id));
             $context['exercises'][] = [
-                'exercise_id' => $exercise->exercise_id, 'sets' => $sets, 'revision' => $barrier === null ? 0 : (int) $barrier->revision,
+                'exercise_id' => $exercise->exercise_id,
+                'sets' => $isExcluded ? [] : $sets,
+                'revision' => $barrier === null ? 0 : (int) $barrier->revision,
                 'successes' => $eligibility->successes, 'failures' => $eligibility->failures,
                 'completed_since_replacement' => $eligibility->completedSinceReplacement, 'completed_since_rejection' => $eligibility->completedSinceRejection,
                 'currently_successful' => $eligibility->currentlySuccessful,

@@ -10,5 +10,6 @@ final readonly class PlannedExerciseSnapshotData
         public private(set) string $name,
         public private(set) array $sets,
         public private(set) int $position,
+        public private(set) ?int $sourcePlanRevision = null,
     ) {}
 }

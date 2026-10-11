@@ -17,10 +17,15 @@ final readonly class WorkoutExerciseDTO
         public private(set) array $plannedSets,
         public private(set) string $status,
         public private(set) array $sets,
+        public private(set) EffectiveWorkoutExerciseDTO $effectiveExercise,
+        public private(set) ?WorkoutExerciseReplacementDTO $replacement,
+        public private(set) bool $includedInAnalysis,
     ) {}
 
     public static function fromDomain(WorkoutExercise $exercise): self
     {
+        $replacement = $exercise->latestReplacement();
+
         return new self(
             exerciseId: $exercise->snapshot->exerciseId->value,
             name: $exercise->snapshot->name->value,
@@ -28,6 +33,9 @@ final readonly class WorkoutExerciseDTO
             plannedSets: array_map(WorkoutSetDTO::fromDomain(...), $exercise->plannedSets()),
             status: $exercise->status->value,
             sets: array_map(WorkoutSetDTO::fromDomain(...), $exercise->workoutSets()),
+            effectiveExercise: EffectiveWorkoutExerciseDTO::fromDomain($exercise),
+            replacement: $replacement === null ? null : WorkoutExerciseReplacementDTO::fromDomain($replacement),
+            includedInAnalysis: $exercise->includedInAnalysis(),
         );
     }
 }

@@ -3,6 +3,7 @@
 namespace App\WorkoutAnalysis\Application\Factories;
 
 use App\WorkoutAnalysis\Application\DTO\CompletedWorkoutData;
+use App\WorkoutAnalysis\Application\DTO\ExcludedExerciseData;
 use App\WorkoutAnalysis\Application\DTO\ExercisePerformanceData;
 use App\WorkoutAnalysis\Application\DTO\SetSnapshotData;
 use App\WorkoutAnalysis\Application\Exceptions\CompletedWorkoutNotFound;
@@ -12,6 +13,7 @@ use App\WorkoutAnalysis\Domain\Collections\ExercisePerformanceCollection;
 use App\WorkoutAnalysis\Domain\Collections\SetSnapshotCollection;
 use App\WorkoutAnalysis\Domain\Enums\ExerciseCompletionStatus;
 use App\WorkoutAnalysis\Domain\ValueObjects\CompletedWorkoutSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExcludedExerciseSnapshot;
 use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseId;
 use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseName;
 use App\WorkoutAnalysis\Domain\ValueObjects\ExercisePerformanceSnapshot;
@@ -59,6 +61,14 @@ final class CompletedWorkoutSnapshotFactory
                     ),
                     $data->exercises,
                 )),
+                array_map(
+                    static fn (ExcludedExerciseData $excluded): ExcludedExerciseSnapshot => new ExcludedExerciseSnapshot(
+                        new ExerciseId($excluded->sourceExerciseId),
+                        new ExerciseId($excluded->planExerciseId),
+                        new ExercisePosition($excluded->position),
+                    ),
+                    $data->excludedExercises,
+                ),
             );
         } catch (InvalidArgumentException|ValueError $exception) {
             throw new InvalidCompletedWorkoutSnapshot('Некорректный снимок завершённой тренировки.', previous: $exception);

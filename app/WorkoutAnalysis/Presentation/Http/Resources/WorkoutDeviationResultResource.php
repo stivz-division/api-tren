@@ -22,6 +22,8 @@ final class WorkoutDeviationResultResource extends JsonResource
             'workout_completed_at' => $value->workoutCompletedAt->setTimezone(new \DateTimeZone('UTC'))->format(DATE_ATOM),
             'completed_exercises' => $value->completedExercises,
             'skipped_exercises' => $value->skippedExercises,
+            'has_comparable_exercises' => $value->hasComparableExercises,
+            'excluded_exercises_count' => $value->excludedExercisesCount,
             'sets' => new CountDeviationResource($value->sets),
             'repetitions' => new CountDeviationResource($value->repetitions),
             /** Объём: сумма веса в килограммах × повторения. */

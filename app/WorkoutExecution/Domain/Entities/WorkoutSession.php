@@ -12,6 +12,7 @@ use App\WorkoutExecution\Domain\Exceptions\WorkoutSessionIsNotInProgress;
 use App\WorkoutExecution\Domain\ValueObjects\ExerciseId;
 use App\WorkoutExecution\Domain\ValueObjects\TrainingProgramSnapshot;
 use App\WorkoutExecution\Domain\ValueObjects\UserId;
+use App\WorkoutExecution\Domain\ValueObjects\WorkoutExerciseReplacement;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSessionId;
 use DateTimeImmutable;
 
@@ -88,6 +89,42 @@ final class WorkoutSession
         $this->assertInProgress();
 
         $this->exercises->get($exerciseId)->saveProgress($sets);
+    }
+
+    public function isReplacementReplay(
+        ExerciseId $sourceExerciseId,
+        string $requestId,
+        ExerciseId $replacementExerciseId,
+        bool $replaceInPlan,
+        WorkoutSetCollection $sets,
+    ): bool {
+        return $this->exercises->get($sourceExerciseId)->isReplacementReplay(
+            $requestId, $replacementExerciseId, $replaceInPlan, $sets,
+        );
+    }
+
+    public function assertCanReplaceExercise(ExerciseId $sourceExerciseId, ExerciseId $replacementExerciseId): void
+    {
+        $this->assertInProgress();
+        $this->exercises->get($sourceExerciseId)->assertCanReplace($replacementExerciseId);
+        $this->exercises->assertEffectiveExerciseAvailable($sourceExerciseId, $replacementExerciseId);
+    }
+
+    public function replaceExercise(ExerciseId $sourceExerciseId, WorkoutExerciseReplacement $replacement): bool
+    {
+        if ($this->isReplacementReplay(
+            $sourceExerciseId,
+            $replacement->requestId,
+            $replacement->snapshot->exerciseId,
+            $replacement->replaceInPlan,
+            new WorkoutSetCollection(...$replacement->plannedSets()),
+        )) {
+            return false;
+        }
+
+        $this->assertCanReplaceExercise($sourceExerciseId, $replacement->snapshot->exerciseId);
+
+        return $this->exercises->get($sourceExerciseId)->replace($replacement);
     }
 
     public function completeExercise(

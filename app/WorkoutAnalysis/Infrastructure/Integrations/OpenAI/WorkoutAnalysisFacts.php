@@ -44,9 +44,7 @@ final class WorkoutAnalysisFacts
                 $previous = $entry->deviations;
                 $previousId = $previous->snapshot->workoutSessionId->value;
                 $summary = $scope === 'same_program'
-                    ? 'Сравнение тренировок №'.$previousId.' → №'.$currentId.' той же программы: подходы '.$this->metric(new MetricDeviation($previous->sets->actual, $current->sets->actual))
-                        .'; повторения '.$this->metric(new MetricDeviation($previous->repetitions->actual, $current->repetitions->actual))
-                        .'; объём '.$this->metric(new MetricDeviation($previous->volume->actual, $current->volume->actual), 1000).' кг·повторов.'
+                    ? $this->historySummary($previous, $current)
                     : 'Другая программа. '.$this->summary($previous).' Суммарный объём разных программ напрямую не сопоставляется.';
                 $historyFacts['history:'.$previousId.':summary'] = [
                     'text' => $summary,
@@ -128,9 +126,53 @@ final class WorkoutAnalysisFacts
 
     private function summary(WorkoutDeviationResult $result): string
     {
+        if (! $result->hasComparableExercises) {
+            return 'Тренировка №'.$result->snapshot->workoutSessionId->value
+                .': Нет упражнений для сравнения; нет данных для оценки выполнения плана.'
+                .' Исключено позиций: '.$result->excludedExercisesCount.'.';
+        }
+        $scope = $result->excludedExercisesCount > 0
+            ? ' Учитываемая часть тренировки; исключено позиций: '.$result->excludedExercisesCount.'.'
+            : '';
+
         return 'Тренировка №'.$result->snapshot->workoutSessionId->value.' «'.$result->snapshot->programName->value.'»: завершено упражнений '.$result->completedExercises
-            .', пропущено '.$result->skippedExercises.'. План → факт: подходы '.$this->metric($result->sets)
+            .', пропущено '.$result->skippedExercises.'.'.$scope.' План → факт: подходы '.$this->metric($result->sets)
             .'; повторения '.$this->metric($result->repetitions).'; объём '.$this->metric($result->volume, 1000).' кг·повторов.';
+    }
+
+    private function historySummary(WorkoutDeviationResult $previous, WorkoutDeviationResult $current): string
+    {
+        $sessions = 'Тренировки №'.$previous->snapshot->workoutSessionId->value
+            .' → №'.$current->snapshot->workoutSessionId->value.' той же программы.';
+        if (! $previous->hasComparableExercises || ! $current->hasComparableExercises) {
+            return $sessions.' Нет данных для сопоставления суммарных показателей:'
+                .' в одной или обеих тренировках нет упражнений для сравнения.';
+        }
+        if (! $this->sameIncludedExercises($previous, $current)) {
+            return $sessions.' Состав учитываемых упражнений различается; суммарный объём напрямую не сопоставляется.';
+        }
+
+        return 'Сравнение тренировок №'.$previous->snapshot->workoutSessionId->value
+            .' → №'.$current->snapshot->workoutSessionId->value.' той же программы, по учитываемым упражнениям: подходы '
+            .$this->metric(new MetricDeviation($previous->sets->actual, $current->sets->actual))
+            .'; повторения '.$this->metric(new MetricDeviation($previous->repetitions->actual, $current->repetitions->actual))
+            .'; объём '.$this->metric(new MetricDeviation($previous->volume->actual, $current->volume->actual), 1000).' кг·повторов.';
+    }
+
+    private function sameIncludedExercises(WorkoutDeviationResult $previous, WorkoutDeviationResult $current): bool
+    {
+        $previousIds = array_map(
+            static fn (ExerciseDeviation $exercise): int => $exercise->snapshot->exerciseId->value,
+            $previous->exercises,
+        );
+        $currentIds = array_map(
+            static fn (ExerciseDeviation $exercise): int => $exercise->snapshot->exerciseId->value,
+            $current->exercises,
+        );
+        sort($previousIds);
+        sort($currentIds);
+
+        return $previousIds === $currentIds;
     }
 
     private function exercise(ExerciseDeviation $exercise, int $sessionId): string

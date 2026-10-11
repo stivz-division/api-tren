@@ -20,10 +20,13 @@ use App\WorkoutExecution\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutExecution\Domain\ValueObjects\TrainingProgramSnapshot;
 use App\WorkoutExecution\Domain\ValueObjects\UserId;
 use App\WorkoutExecution\Domain\ValueObjects\WorkingWeight;
+use App\WorkoutExecution\Domain\ValueObjects\WorkoutExerciseReplacement;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSessionId;
 use App\WorkoutExecution\Domain\ValueObjects\WorkoutSet;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutExerciseModel;
+use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutExerciseReplacementModel;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutPlannedSetModel;
+use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutReplacementPlannedSetModel;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutSessionModel;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutSetModel;
 use Carbon\CarbonImmutable;
@@ -56,6 +59,12 @@ final readonly class WorkoutSessionMapper
                     );
                 }
 
+                if (! $exercise->relationLoaded('replacements')) {
+                    throw new LogicException(
+                        'Для восстановления упражнения необходимо загрузить замены.',
+                    );
+                }
+
                 $plannedSets = $exercise->plannedSets
                     ->map(static fn (WorkoutPlannedSetModel $set): WorkoutSet => new WorkoutSet(
                         new SetPosition($set->position),
@@ -80,6 +89,14 @@ final readonly class WorkoutSessionMapper
                     ->values()
                     ->all();
 
+                $replacements = $exercise->replacements
+                    ->map(fn (WorkoutExerciseReplacementModel $replacement): WorkoutExerciseReplacement => $this->replacementToDomain(
+                        $replacement,
+                        $exercise->position,
+                    ))
+                    ->values()
+                    ->all();
+
                 return WorkoutExercise::restore(
                     new ExerciseSnapshot(
                         new ExerciseId($exercise->exercise_id),
@@ -89,6 +106,8 @@ final readonly class WorkoutSessionMapper
                     new WorkoutSetCollection(...$plannedSets),
                     new WorkoutSetCollection(...$sets),
                     WorkoutExerciseStatus::from($exercise->status),
+                    array_values($replacements),
+                    $exercise->source_plan_revision,
                 );
             })
             ->values()
@@ -123,5 +142,37 @@ final readonly class WorkoutSessionMapper
     {
         return DateTimeImmutable::createFromInterface($date)
             ->setTimezone(new DateTimeZone('UTC'));
+    }
+
+    private function replacementToDomain(
+        WorkoutExerciseReplacementModel $model,
+        int $position,
+    ): WorkoutExerciseReplacement {
+        if (! $model->relationLoaded('plannedSets')) {
+            throw new LogicException('Для восстановления замены необходимо загрузить запланированные подходы.');
+        }
+
+        $sets = $model->plannedSets
+            ->map(static fn (WorkoutReplacementPlannedSetModel $set): WorkoutSet => new WorkoutSet(
+                new SetPosition($set->position),
+                new Repetitions($set->repetitions),
+                new WorkingWeight($set->working_weight_grams),
+            ))
+            ->values()
+            ->all();
+
+        return new WorkoutExerciseReplacement(
+            $model->sequence,
+            $model->request_id,
+            new ExerciseSnapshot(
+                new ExerciseId($model->exercise_id),
+                new ExerciseName($model->exercise_name),
+                new ExercisePosition($position),
+            ),
+            new WorkoutSetCollection(...$sets),
+            $model->replace_in_plan,
+            $this->toUtc($model->created_at),
+            $model->plan_revision_after,
+        );
     }
 }

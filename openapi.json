@@ -1511,6 +1511,147 @@
                 }
             }
         },
+        "/workout-sessions/{workoutSessionId}/exercises/{exerciseId}/replace": {
+            "post": {
+                "operationId": "workout-sessions.exercises.replace",
+                "description": "New replacements require an in_progress session and pending exercise. The supplied sets replace the draft.\nreplace_in_plan defaults to false; true also updates the program and includes the new load in current analysis.\nReusing a UUID with the same normalized payload returns the full current session without resetting progress,\nincluding after completion or catalog deletion. A different payload for that UUID returns 409.",
+                "summary": "Replace an exercise in an active workout",
+                "tags": [
+                    "ReplaceExercise"
+                ],
+                "parameters": [
+                    {
+                        "name": "workoutSessionId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    },
+                    {
+                        "name": "exerciseId",
+                        "in": "path",
+                        "required": true,
+                        "description": "Original catalog exercise ID of the session position. Remains the command ID after every replacement.",
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ReplaceExerciseRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "`WorkoutSessionResource`",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/WorkoutSessionResource"
+                                        }
+                                    },
+                                    "required": [
+                                        "data"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/AuthenticationException"
+                    },
+                    "422": {
+                        "description": "The replacement payload is invalid or the replacement exercise is absent from the catalog.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/AuthorizationException"
+                    },
+                    "404": {
+                        "description": "The workout session or exercise does not exist for this user.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "code",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The session or exercise state, duplicate exercise, changed plan, conflicting request UUID, or mutation lock prevents replacement.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "code",
+                                        "message"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/workout-sessions/{workoutSessionId}/exercises/{exerciseId}/sets": {
             "put": {
                 "operationId": "workout-sessions.exercises.sets.update",
@@ -1765,7 +1906,10 @@
                                     "minimum": 1
                                 },
                                 "working_weight_kg": {
-                                    "type": "number"
+                                    "type": "number",
+                                    "description": "Kilograms with at most two decimal places.",
+                                    "minimum": 0,
+                                    "maximum": 1000000000
                                 }
                             },
                             "required": [
@@ -1808,6 +1952,29 @@
                     "percentage"
                 ],
                 "title": "CountDeviationResource"
+            },
+            "EffectiveWorkoutExerciseResource": {
+                "type": "object",
+                "properties": {
+                    "exercise_id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "planned_sets": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/WorkoutSetResource"
+                        }
+                    }
+                },
+                "required": [
+                    "exercise_id",
+                    "name",
+                    "planned_sets"
+                ],
+                "title": "EffectiveWorkoutExerciseResource"
             },
             "Exercise": {
                 "type": "object",
@@ -1998,6 +2165,53 @@
                 ],
                 "title": "PlannedSetResource"
             },
+            "ReplaceExerciseRequest": {
+                "type": "object",
+                "properties": {
+                    "sets": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "repetitions": {
+                                    "type": "integer",
+                                    "minimum": 1
+                                },
+                                "working_weight_kg": {
+                                    "type": "number",
+                                    "description": "Kilograms with at most two decimal places.",
+                                    "minimum": 0,
+                                    "maximum": 1000000000
+                                }
+                            },
+                            "required": [
+                                "repetitions",
+                                "working_weight_kg"
+                            ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 100
+                    },
+                    "request_id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "replacement_exercise_id": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "replace_in_plan": {
+                        "type": "boolean",
+                        "default": false
+                    }
+                },
+                "required": [
+                    "sets",
+                    "request_id",
+                    "replacement_exercise_id"
+                ],
+                "title": "ReplaceExerciseRequest"
+            },
             "SaveExerciseProgressRequest": {
                 "type": "object",
                 "properties": {
@@ -2011,7 +2225,10 @@
                                     "minimum": 1
                                 },
                                 "working_weight_kg": {
-                                    "type": "number"
+                                    "type": "number",
+                                    "description": "Kilograms with at most two decimal places.",
+                                    "minimum": 0,
+                                    "maximum": 1000000000
                                 }
                             },
                             "required": [
@@ -2430,6 +2647,12 @@
                     "skipped_exercises": {
                         "type": "integer"
                     },
+                    "has_comparable_exercises": {
+                        "type": "boolean"
+                    },
+                    "excluded_exercises_count": {
+                        "type": "integer"
+                    },
                     "sets": {
                         "$ref": "#/components/schemas/CountDeviationResource"
                     },
@@ -2453,6 +2676,8 @@
                     "workout_completed_at",
                     "completed_exercises",
                     "skipped_exercises",
+                    "has_comparable_exercises",
+                    "excluded_exercises_count",
                     "sets",
                     "repetitions",
                     "volume_kg",
@@ -2460,11 +2685,30 @@
                 ],
                 "title": "WorkoutDeviationResultResource"
             },
+            "WorkoutExerciseReplacementResource": {
+                "type": "object",
+                "properties": {
+                    "request_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "UUID identifying the latest replacement operation, normalized to lowercase."
+                    },
+                    "replace_in_plan": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "request_id",
+                    "replace_in_plan"
+                ],
+                "title": "WorkoutExerciseReplacementResource"
+            },
             "WorkoutExerciseResource": {
                 "type": "object",
                 "properties": {
                     "exercise_id": {
-                        "type": "integer"
+                        "type": "integer",
+                        "description": "Original catalog ID of the session position; use this ID for all exercise commands."
                     },
                     "name": {
                         "type": "string"
@@ -2482,6 +2726,7 @@
                     },
                     "planned_sets": {
                         "type": "array",
+                        "description": "Original planned load captured when the session started.",
                         "items": {
                             "$ref": "#/components/schemas/WorkoutSetResource"
                         }
@@ -2491,6 +2736,24 @@
                         "items": {
                             "$ref": "#/components/schemas/WorkoutSetResource"
                         }
+                    },
+                    "effective_exercise": {
+                        "description": "Current exercise and load for execution; may differ from the original snapshot after replacement.",
+                        "$ref": "#/components/schemas/EffectiveWorkoutExerciseResource"
+                    },
+                    "replacement": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/WorkoutExerciseReplacementResource"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "included_in_analysis": {
+                        "type": "boolean",
+                        "description": "False when the latest replacement applies only to this session."
                     }
                 },
                 "required": [
@@ -2499,7 +2762,10 @@
                     "position",
                     "status",
                     "planned_sets",
-                    "sets"
+                    "sets",
+                    "effective_exercise",
+                    "replacement",
+                    "included_in_analysis"
                 ],
                 "title": "WorkoutExerciseResource"
             },

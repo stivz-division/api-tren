@@ -6,6 +6,7 @@ use App\WorkoutAnalysis\Domain\Collections\ExercisePerformanceCollection;
 use App\WorkoutAnalysis\Domain\Collections\SetSnapshotCollection;
 use App\WorkoutAnalysis\Domain\Enums\ExerciseCompletionStatus;
 use App\WorkoutAnalysis\Domain\ValueObjects\CompletedWorkoutSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExcludedExerciseSnapshot;
 use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseId;
 use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseName;
 use App\WorkoutAnalysis\Domain\ValueObjects\ExercisePerformanceSnapshot;
@@ -22,12 +23,16 @@ use UnexpectedValueException;
 
 final class CompletedWorkoutSnapshotCodec
 {
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /** @return array<string, mixed> */
-    public function encode(CompletedWorkoutSnapshot $snapshot): array
+    public function encode(CompletedWorkoutSnapshot $snapshot, int $version = self::VERSION): array
     {
-        return [
+        $this->assertVersion($version);
+        if ($version === 1 && $snapshot->excludedExercises !== []) {
+            throw new UnexpectedValueException('Формат v1 не поддерживает исключённые упражнения.');
+        }
+        $payload = [
             'workout_session_id' => $snapshot->workoutSessionId->value,
             'user_id' => $snapshot->userId->value,
             'training_program_id' => $snapshot->trainingProgramId->value,
@@ -42,14 +47,24 @@ final class CompletedWorkoutSnapshotCodec
                 'actual_sets' => array_map($this->encodeSet(...), $exercise->actualSets->all()),
             ], $snapshot->exercises->all()),
         ];
+        if ($version === 2) {
+            $payload['excluded_exercises'] = array_map(
+                static fn (ExcludedExerciseSnapshot $excluded): array => [
+                    'source_exercise_id' => $excluded->sourceExerciseId->value,
+                    'plan_exercise_id' => $excluded->planExerciseId->value,
+                    'position' => $excluded->position->value,
+                ],
+                $snapshot->excludedExercises,
+            );
+        }
+
+        return $payload;
     }
 
     /** @param array<string, mixed> $payload */
     public function decode(array $payload, int $version): CompletedWorkoutSnapshot
     {
-        if ($version !== self::VERSION) {
-            throw new UnexpectedValueException('Неподдерживаемая версия формата снимка тренировки.');
-        }
+        $this->assertVersion($version);
 
         $exercises = [];
         foreach (AnalysisPayload::list($payload['exercises'] ?? null) as $item) {
@@ -64,6 +79,18 @@ final class CompletedWorkoutSnapshotCodec
             );
         }
 
+        $excludedExercises = [];
+        if ($version === 2) {
+            foreach (AnalysisPayload::list($payload['excluded_exercises'] ?? null) as $item) {
+                $excluded = AnalysisPayload::object($item);
+                $excludedExercises[] = new ExcludedExerciseSnapshot(
+                    new ExerciseId(AnalysisPayload::integer($excluded['source_exercise_id'] ?? null)),
+                    new ExerciseId(AnalysisPayload::integer($excluded['plan_exercise_id'] ?? null)),
+                    new ExercisePosition(AnalysisPayload::integer($excluded['position'] ?? null)),
+                );
+            }
+        }
+
         $snapshot = new CompletedWorkoutSnapshot(
             new WorkoutSessionId(AnalysisPayload::integer($payload['workout_session_id'] ?? null)),
             new UserId(AnalysisPayload::integer($payload['user_id'] ?? null)),
@@ -71,13 +98,21 @@ final class CompletedWorkoutSnapshotCodec
             new ProgramName(AnalysisPayload::string($payload['program_name'] ?? null)),
             AnalysisPayload::date($payload['completed_at'] ?? null),
             new ExercisePerformanceCollection(...$exercises),
+            $excludedExercises,
         );
 
-        if (! AnalysisPayload::equals($this->encode($snapshot), $payload)) {
+        if (! AnalysisPayload::equals($this->encode($snapshot, $version), $payload)) {
             throw new UnexpectedValueException('Некорректные данные снимка тренировки.');
         }
 
         return $snapshot;
+    }
+
+    private function assertVersion(int $version): void
+    {
+        if (! in_array($version, [1, self::VERSION], true)) {
+            throw new UnexpectedValueException('Неподдерживаемая версия формата снимка тренировки.');
+        }
     }
 
     /** @return array{position: int, repetitions: int, working_weight_grams: int} */

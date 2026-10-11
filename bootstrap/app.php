@@ -5,12 +5,17 @@ use App\WorkoutAnalysis\Application\Exceptions\RecommendationNotFound;
 use App\WorkoutAnalysis\Application\Exceptions\WorkoutAnalysisNotFound;
 use App\WorkoutExecution\Application\Exceptions\InvalidTrainingProgramSnapshot;
 use App\WorkoutExecution\Application\Exceptions\TrainingProgramNotFound as ExecutionTrainingProgramNotFound;
+use App\WorkoutExecution\Application\Exceptions\WorkoutReplacementCandidateNotFound;
+use App\WorkoutExecution\Application\Exceptions\WorkoutReplacementPlanConflict;
 use App\WorkoutExecution\Application\Exceptions\WorkoutSessionMutationInProgress;
 use App\WorkoutExecution\Application\Exceptions\WorkoutSessionNotFound;
 use App\WorkoutExecution\Domain\Exceptions\ActiveWorkoutSessionAlreadyExists;
+use App\WorkoutExecution\Domain\Exceptions\ExerciseAlreadyAddedToWorkout;
+use App\WorkoutExecution\Domain\Exceptions\InvalidWorkoutExerciseReplacement;
 use App\WorkoutExecution\Domain\Exceptions\WorkoutExerciseHasNoSets;
 use App\WorkoutExecution\Domain\Exceptions\WorkoutExerciseIsNotEditable;
 use App\WorkoutExecution\Domain\Exceptions\WorkoutExerciseNotFound;
+use App\WorkoutExecution\Domain\Exceptions\WorkoutReplacementRequestConflict;
 use App\WorkoutExecution\Domain\Exceptions\WorkoutSessionHasPendingExercises;
 use App\WorkoutExecution\Domain\Exceptions\WorkoutSessionIsNotInProgress;
 use App\WorkoutPlanning\Application\Exceptions\ExerciseNotFound;
@@ -36,6 +41,13 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->dontReport([
+            WorkoutReplacementCandidateNotFound::class,
+            WorkoutReplacementPlanConflict::class,
+            InvalidWorkoutExerciseReplacement::class,
+            ExerciseAlreadyAddedToWorkout::class,
+            WorkoutReplacementRequestConflict::class,
+        ]);
         $exceptions->render(
             fn (RecommendationNotFound $exception): JsonResponse => response()->json([
                 'code' => 'workout_recommendation_not_found',
@@ -160,5 +172,35 @@ return Application::configure(basePath: dirname(__DIR__))
                 'code' => 'workout_exercise_has_no_sets',
                 'message' => 'Для завершения упражнения нужен хотя бы один подход.',
             ], Response::HTTP_UNPROCESSABLE_ENTITY),
+        );
+        $exceptions->render(
+            fn (WorkoutReplacementCandidateNotFound $exception): JsonResponse => response()->json([
+                'code' => 'workout_replacement_candidate_not_found',
+                'message' => 'Упражнение для замены не найдено.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY),
+        );
+        $exceptions->render(
+            fn (WorkoutReplacementPlanConflict $exception): JsonResponse => response()->json([
+                'code' => 'workout_replacement_plan_conflict',
+                'message' => 'План изменён или недоступен для замены.',
+            ], Response::HTTP_CONFLICT),
+        );
+        $exceptions->render(
+            fn (InvalidWorkoutExerciseReplacement $exception): JsonResponse => response()->json([
+                'code' => 'invalid_workout_exercise_replacement',
+                'message' => 'Эта замена упражнения недопустима.',
+            ], Response::HTTP_CONFLICT),
+        );
+        $exceptions->render(
+            fn (WorkoutReplacementRequestConflict $exception): JsonResponse => response()->json([
+                'code' => 'workout_replacement_request_conflict',
+                'message' => 'Идентификатор запроса уже использован для другой замены.',
+            ], Response::HTTP_CONFLICT),
+        );
+        $exceptions->render(
+            fn (ExerciseAlreadyAddedToWorkout $exception): JsonResponse => response()->json([
+                'code' => 'exercise_already_added_to_workout',
+                'message' => $exception->getMessage(),
+            ], Response::HTTP_CONFLICT),
         );
     })->create();

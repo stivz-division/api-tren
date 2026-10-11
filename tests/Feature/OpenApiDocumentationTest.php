@@ -22,6 +22,7 @@ $expectedOpenApiOperations = [
     'POST /workout-sessions/{workoutSessionId}/complete',
     'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/complete',
     'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/reopen',
+    'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/replace',
     'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/skip',
     'PUT /training-programs/{trainingProgramId}',
     'PUT /workout-sessions/active',
@@ -369,6 +370,78 @@ it('documents authentication and request validation contracts', function () use 
     }
 });
 
+it('documents replacement payloads and the current exercise projection', function () use (
+    $loadOpenApiDocuments,
+    $openApiArrayAt,
+    $openApiBooleanAt,
+    $openApiIntegerAt,
+    $openApiOperation,
+    $openApiRequestSchema,
+    $openApiResponseSchema,
+    $openApiStringAt,
+): void {
+    foreach ($loadOpenApiDocuments($this) as $source => $document) {
+        $operation = $openApiOperation(
+            $document,
+            'POST',
+            '/workout-sessions/{workoutSessionId}/exercises/{exerciseId}/replace',
+        );
+        $requestSchema = $openApiRequestSchema($document, $operation);
+        $setSchema = $openApiArrayAt($requestSchema, ['properties', 'sets', 'items']);
+
+        $this->assertTrue($openApiBooleanAt($operation, ['requestBody', 'required']));
+        $this->assertSame(['sets', 'request_id', 'replacement_exercise_id'], $openApiArrayAt($requestSchema, ['required']));
+        $this->assertSame('uuid', $openApiStringAt($requestSchema, ['properties', 'request_id', 'format']));
+        $this->assertSame('integer', $openApiStringAt($requestSchema, ['properties', 'replacement_exercise_id', 'type']));
+        $this->assertSame(1, $openApiIntegerAt($requestSchema, ['properties', 'replacement_exercise_id', 'minimum']));
+        $this->assertSame('boolean', $openApiStringAt($requestSchema, ['properties', 'replace_in_plan', 'type']));
+        $this->assertFalse($openApiBooleanAt($requestSchema, ['properties', 'replace_in_plan', 'default']));
+        $this->assertSame(1, $openApiIntegerAt($requestSchema, ['properties', 'sets', 'minItems']));
+        $this->assertSame(100, $openApiIntegerAt($requestSchema, ['properties', 'sets', 'maxItems']));
+        $this->assertSame(['repetitions', 'working_weight_kg'], $openApiArrayAt($setSchema, ['required']));
+        $this->assertSame(1, $openApiIntegerAt($setSchema, ['properties', 'repetitions', 'minimum']));
+        $this->assertSame('number', $openApiStringAt($setSchema, ['properties', 'working_weight_kg', 'type']));
+        $this->assertSame(0, $openApiIntegerAt($setSchema, ['properties', 'working_weight_kg', 'minimum']));
+        $this->assertSame(1000000000, $openApiIntegerAt($setSchema, ['properties', 'working_weight_kg', 'maximum']));
+        $this->assertStringContainsString(
+            'Original catalog exercise ID',
+            $openApiStringAt($operation, ['parameters', 1, 'description']),
+            "{$source}: replacement commands must keep the source exercise ID",
+        );
+
+        $responseSchema = $openApiResponseSchema($document, $operation, '200');
+        $this->assertSame(['data'], $openApiArrayAt($responseSchema, ['required']));
+        $this->assertSame('#/components/schemas/WorkoutSessionResource', $openApiStringAt($responseSchema, ['properties', 'data', '$ref']));
+
+        $exerciseSchema = $openApiArrayAt($document, ['components', 'schemas', 'WorkoutExerciseResource']);
+        $this->assertSame(
+            ['exercise_id', 'name', 'position', 'status', 'planned_sets', 'sets', 'effective_exercise', 'replacement', 'included_in_analysis'],
+            $openApiArrayAt($exerciseSchema, ['required']),
+        );
+        $this->assertSame('#/components/schemas/EffectiveWorkoutExerciseResource', $openApiStringAt($exerciseSchema, ['properties', 'effective_exercise', '$ref']));
+        $this->assertSame(
+            [['$ref' => '#/components/schemas/WorkoutExerciseReplacementResource'], ['type' => 'null']],
+            $openApiArrayAt($exerciseSchema, ['properties', 'replacement', 'anyOf']),
+        );
+        $this->assertSame('boolean', $openApiStringAt($exerciseSchema, ['properties', 'included_in_analysis', 'type']));
+        $this->assertSame(
+            ['exercise_id', 'name', 'planned_sets'],
+            $openApiArrayAt($document, ['components', 'schemas', 'EffectiveWorkoutExerciseResource', 'required']),
+        );
+        $this->assertSame(
+            ['request_id', 'replace_in_plan'],
+            $openApiArrayAt($document, ['components', 'schemas', 'WorkoutExerciseReplacementResource', 'required']),
+        );
+        $this->assertSame('uuid', $openApiStringAt($document, ['components', 'schemas', 'WorkoutExerciseReplacementResource', 'properties', 'request_id', 'format']));
+        $this->assertSame('boolean', $openApiStringAt($document, ['components', 'schemas', 'WorkoutExerciseReplacementResource', 'properties', 'replace_in_plan', 'type']));
+        $this->assertSame('boolean', $openApiStringAt($document, ['components', 'schemas', 'WorkoutDeviationResultResource', 'properties', 'has_comparable_exercises', 'type']));
+        $this->assertSame('integer', $openApiStringAt($document, ['components', 'schemas', 'WorkoutDeviationResultResource', 'properties', 'excluded_exercises_count', 'type']));
+        $analysisRequired = $openApiArrayAt($document, ['components', 'schemas', 'WorkoutDeviationResultResource', 'required']);
+        $this->assertContains('has_comparable_exercises', $analysisRequired);
+        $this->assertContains('excluded_exercises_count', $analysisRequired);
+    }
+});
+
 it('documents route parameters without internal request fields', function () use (
     $loadOpenApiDocuments,
     $openApiArrayAt,
@@ -389,6 +462,7 @@ it('documents route parameters without internal request fields', function () use
         'POST /workout-sessions/{workoutSessionId}/complete' => ['workoutSessionId'],
         'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/complete' => ['workoutSessionId', 'exerciseId'],
         'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/reopen' => ['workoutSessionId', 'exerciseId'],
+        'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/replace' => ['workoutSessionId', 'exerciseId'],
         'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/skip' => ['workoutSessionId', 'exerciseId'],
         'PUT /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/sets' => ['workoutSessionId', 'exerciseId'],
     ];
@@ -473,6 +547,7 @@ it('documents success resources and API error responses', function () use (
         'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/complete' => ['200', '401', '404', '409', '422'],
         'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/skip' => ['200', '401', '404', '409', '422'],
         'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/reopen' => ['200', '401', '404', '409', '422'],
+        'POST /workout-sessions/{workoutSessionId}/exercises/{exerciseId}/replace' => ['200', '401', '404', '409', '422'],
         'POST /workout-sessions/{workoutSessionId}/complete' => ['200', '401', '404', '409', '422'],
         'POST /workout-sessions/{workoutSessionId}/cancel' => ['200', '401', '404', '409', '422'],
     ];

@@ -18,6 +18,7 @@ use App\WorkoutExecution\Domain\ValueObjects\WorkoutSet;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Mappers\WorkoutSessionMapper;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutExerciseModel;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutPlannedSetModel;
+use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutReplacementPlannedSetModel;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutSessionModel;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Models\WorkoutSetModel;
 use DateTimeImmutable;
@@ -90,9 +91,14 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
                     $exerciseModel->workoutSets()->createMany(
                         $this->setAttributes($exercise),
                     );
+                    $this->appendReplacements($exerciseModel, $exercise, 0);
                 }
 
-                return $model->load('workoutExercises.plannedSets', 'workoutExercises.workoutSets');
+                return $model->load(
+                    'workoutExercises.plannedSets',
+                    'workoutExercises.workoutSets',
+                    'workoutExercises.replacements.plannedSets',
+                );
             });
         } catch (QueryException $exception) {
             if (! $this->isActiveSessionConflict($exception)) {
@@ -125,7 +131,7 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
 
             /** @var Collection<int, WorkoutExerciseModel> $exerciseModels */
             $exerciseModels = $model->workoutExercises()
-                ->with('plannedSets')
+                ->with('plannedSets', 'replacements.plannedSets')
                 ->get()
                 ->keyBy('exercise_id');
             $exercises = $session->workoutExercises();
@@ -143,6 +149,7 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
                 }
 
                 $this->assertExerciseSnapshotUnchanged($exerciseModel, $exercise);
+                $this->assertReplacementHistoryUnchanged($exerciseModel, $exercise);
             }
 
             $model->update([
@@ -167,6 +174,7 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
                 /** @var WorkoutExerciseModel $exerciseModel */
                 $exerciseModel = $exerciseModels->get($exercise->snapshot->exerciseId->value);
                 $exerciseModel->update(['status' => $exercise->status->value]);
+                $this->appendReplacements($exerciseModel, $exercise, $exerciseModel->replacements->count());
                 $exerciseModel->workoutSets()->createMany($this->setAttributes($exercise));
             }
         });
@@ -178,7 +186,11 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
             return null;
         }
 
-        $model->load('workoutExercises.plannedSets', 'workoutExercises.workoutSets');
+        $model->load(
+            'workoutExercises.plannedSets',
+            'workoutExercises.workoutSets',
+            'workoutExercises.replacements.plannedSets',
+        );
 
         return $this->mapper->toDomain($model);
     }
@@ -188,7 +200,8 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
      *     exercise_id: int,
      *     exercise_name: string,
      *     position: int,
-     *     status: string
+     *     status: string,
+     *     source_plan_revision: int|null
      * }
      */
     private function exerciseAttributes(WorkoutExercise $exercise): array
@@ -198,6 +211,7 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
             'exercise_name' => $exercise->snapshot->name->value,
             'position' => $exercise->snapshot->position->value,
             'status' => $exercise->status->value,
+            'source_plan_revision' => $exercise->sourcePlanRevision,
         ];
     }
 
@@ -260,6 +274,7 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
         if (
             $model->exercise_name !== $exercise->snapshot->name->value
             || $model->position !== $exercise->snapshot->position->value
+            || $model->source_plan_revision !== $exercise->sourcePlanRevision
             || ! $this->persistedPlannedSets($model)->equals(
                 new WorkoutSetCollection(...$exercise->plannedSets()),
             )
@@ -279,6 +294,64 @@ final readonly class EloquentWorkoutSessionRepository implements WorkoutSessionR
             ->all();
 
         return new WorkoutSetCollection(...$sets);
+    }
+
+    private function assertReplacementHistoryUnchanged(WorkoutExerciseModel $model, WorkoutExercise $exercise): void
+    {
+        $replacements = $exercise->replacements();
+
+        if ($model->replacements->count() > count($replacements)) {
+            throw new LogicException('Нельзя удалить сохранённые замены упражнения.');
+        }
+
+        foreach ($model->replacements as $index => $persisted) {
+            $replacement = $replacements[$index];
+            $sets = $persisted->plannedSets
+                ->map(static fn (WorkoutReplacementPlannedSetModel $set): WorkoutSet => new WorkoutSet(
+                    new SetPosition($set->position),
+                    new Repetitions($set->repetitions),
+                    new WorkingWeight($set->working_weight_grams),
+                ))
+                ->all();
+
+            if (
+                $persisted->sequence !== $replacement->sequence
+                || $persisted->request_id !== $replacement->requestId
+                || $persisted->exercise_id !== $replacement->snapshot->exerciseId->value
+                || $persisted->exercise_name !== $replacement->snapshot->name->value
+                || $persisted->replace_in_plan !== $replacement->replaceInPlan
+                || $persisted->created_at != $this->toUtc($replacement->createdAt)
+                || $persisted->plan_revision_after !== $replacement->planRevisionAfter
+                || ! (new WorkoutSetCollection(...$sets))->equals(
+                    new WorkoutSetCollection(...$replacement->plannedSets()),
+                )
+            ) {
+                throw new LogicException('Нельзя изменить сохранённую замену упражнения.');
+            }
+        }
+    }
+
+    private function appendReplacements(WorkoutExerciseModel $model, WorkoutExercise $exercise, int $persistedCount): void
+    {
+        foreach (array_slice($exercise->replacements(), $persistedCount) as $replacement) {
+            $replacementModel = $model->replacements()->create([
+                'sequence' => $replacement->sequence,
+                'request_id' => $replacement->requestId,
+                'exercise_id' => $replacement->snapshot->exerciseId->value,
+                'exercise_name' => $replacement->snapshot->name->value,
+                'replace_in_plan' => $replacement->replaceInPlan,
+                'created_at' => $this->toUtc($replacement->createdAt),
+                'plan_revision_after' => $replacement->planRevisionAfter,
+            ]);
+            $replacementModel->plannedSets()->createMany(array_map(
+                static fn (WorkoutSet $set): array => [
+                    'position' => $set->position->value,
+                    'repetitions' => $set->repetitions->value,
+                    'working_weight_grams' => $set->workingWeight->grams,
+                ],
+                $replacement->plannedSets(),
+            ));
+        }
     }
 
     private function toUtc(DateTimeImmutable $date): DateTimeImmutable

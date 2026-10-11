@@ -21,7 +21,11 @@ final readonly class EloquentCompletedWorkoutProvider implements CompletedWorkou
             if ($session === null) {
                 return null;
             }
-            $session->load('workoutExercises.plannedSets', 'workoutExercises.workoutSets');
+            $session->load([
+                'workoutExercises.plannedSets',
+                'workoutExercises.workoutSets',
+                'workoutExercises.replacements.plannedSets',
+            ]);
 
             return $this->mapper->toData($session);
         });

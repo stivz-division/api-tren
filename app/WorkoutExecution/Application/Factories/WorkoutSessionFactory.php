@@ -44,6 +44,7 @@ final readonly class WorkoutSessionFactory
                     new ExercisePosition($exercise->position),
                 ),
                 $this->plannedSets($exercise),
+                $exercise->sourcePlanRevision,
             ),
             $program->exercises,
         );

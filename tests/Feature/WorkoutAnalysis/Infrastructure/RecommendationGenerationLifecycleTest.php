@@ -7,14 +7,19 @@ use App\WorkoutAnalysis\Application\UseCases\GenerateWorkoutRecommendations\Gene
 use App\WorkoutAnalysis\Application\UseCases\GenerateWorkoutRecommendations\GenerateWorkoutRecommendationsInput;
 use App\WorkoutAnalysis\Application\UseCases\RecoverWorkoutRecommendations\RecoverWorkoutRecommendations;
 use App\WorkoutAnalysis\Application\UseCases\RecoverWorkoutRecommendations\RecoverWorkoutRecommendationsInput;
+use App\WorkoutAnalysis\Domain\Collections\ExercisePerformanceCollection;
 use App\WorkoutAnalysis\Domain\Collections\WorkoutHistoryWindow;
 use App\WorkoutAnalysis\Domain\Entities\WorkoutAnalysis;
 use App\WorkoutAnalysis\Domain\Enums\AnalysisFailureCode;
 use App\WorkoutAnalysis\Domain\Enums\AnalysisStatus;
 use App\WorkoutAnalysis\Domain\Repositories\WorkoutAnalysisRepository;
+use App\WorkoutAnalysis\Domain\Services\WorkoutDeviationCalculator;
 use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisContextSnapshot;
 use App\WorkoutAnalysis\Domain\ValueObjects\AnalysisEvidenceReference;
+use App\WorkoutAnalysis\Domain\ValueObjects\CompletedWorkoutSnapshot;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExcludedExerciseSnapshot;
 use App\WorkoutAnalysis\Domain\ValueObjects\ExerciseId;
+use App\WorkoutAnalysis\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutAnalysis\Domain\ValueObjects\RecommendationBatch;
 use App\WorkoutAnalysis\Domain\ValueObjects\RecommendationProposal;
 use App\WorkoutAnalysis\Domain\ValueObjects\WorkoutAIResult;
@@ -29,9 +34,18 @@ use Tests\Support\WorkoutAnalysis\WorkoutAnalysisFixture as Fixture;
 
 uses(DatabaseMigrations::class);
 
-$pendingRecommendations = static function (bool $empty = false, int $sessionId = 51, bool $successful = true): WorkoutAnalysis {
+$pendingRecommendations = static function (bool $empty = false, int $sessionId = 51, bool $successful = true, bool $excluded = false): WorkoutAnalysis {
     $user = User::factory()->create();
     $result = Fixture::result(sessionId: $sessionId, userId: $user->id, exercise: Fixture::exercise(actual: [[$successful ? 10 : 8, 50000]]));
+    if ($excluded) {
+        $base = $result->snapshot;
+        $snapshot = new CompletedWorkoutSnapshot(
+            $base->workoutSessionId, $base->userId, $base->trainingProgramId, $base->programName, $base->completedAt,
+            new ExercisePerformanceCollection,
+            [new ExcludedExerciseSnapshot(new ExerciseId(10), new ExerciseId(10), new ExercisePosition(1))],
+        );
+        $result = (new WorkoutDeviationCalculator)->calculate($snapshot);
+    }
     $now = now()->subMinute()->toDateTimeImmutable();
     $analysis = WorkoutAnalysis::initialize($result->snapshot, $now);
     $analysis->startDeviationAttempt(1, $now, $now->modify('+30 seconds'));
@@ -40,7 +54,7 @@ $pendingRecommendations = static function (bool $empty = false, int $sessionId =
     $context = new AnalysisContextSnapshot($result, new WorkoutHistoryWindow, new WorkoutHistoryWindow, $now);
     $analysis->attachContext($context);
     $analysis->attachRecommendationContext(['program_id' => 11, 'exercises' => $empty ? [] : [[
-        'exercise_id' => 10, 'sets' => [['position' => 1, 'repetitions' => 10, 'working_weight_grams' => 50000]],
+        'exercise_id' => 10, 'sets' => $excluded ? [] : [['position' => 1, 'repetitions' => 10, 'working_weight_grams' => 50000]],
         'revision' => 0, 'successes' => $successful ? 1 : 0, 'failures' => $successful ? 0 : 1,
         'completed_since_replacement' => 1, 'completed_since_rejection' => 4, 'currently_successful' => $successful,
     ]], 'catalog' => []]);
@@ -223,3 +237,28 @@ it('leaves permanent provider errors terminal without scheduling an automatic re
     Queue::assertNothingPushed();
     $this->assertDatabaseCount('workout_recommendations', 0);
 })->with([AnalysisFailureCode::AIRefused, AnalysisFailureCode::ProviderRejected, AnalysisFailureCode::InvalidAIResponse, AnalysisFailureCode::IncompleteAIResponse]);
+
+it('completes all excluded workouts with the exact no data reason before checking program availability', function (bool $missingProgram) use ($pendingRecommendations, $recommendationInput): void {
+    Queue::fake();
+    $analysis = $pendingRecommendations(empty: $missingProgram, excluded: true);
+    $this->mock(RecommendationProvider::class)->shouldNotReceive('generate');
+
+    $stage = app(GenerateWorkoutRecommendations::class)->handle($recommendationInput($analysis));
+    app(GenerateWorkoutRecommendations::class)->handle($recommendationInput($analysis));
+
+    expect($stage?->status())->toBe(AnalysisStatus::Completed);
+    expect($stage?->result?->noChangeReason)->toBe('Нет упражнений для сравнения в текущей тренировке');
+    expect($stage?->result?->model)->toBeNull();
+    expect($stage?->result?->responseId)->toBeNull();
+    $stored = app(WorkoutAnalysisRepository::class)->findForUser($analysis->id ?? throw new LogicException, $analysis->deviations()->snapshot->userId);
+    expect($stored?->overallStatus())->toBe(AnalysisStatus::Completed);
+    expect($stored?->recommendations()?->result?->noChangeReason)->toBe('Нет упражнений для сравнения в текущей тренировке');
+    $this->assertDatabaseCount('workout_recommendations', 0);
+    $this->assertDatabaseCount('workout_recommendation_attempts', 1);
+    Sanctum::actingAs(User::query()->findOrFail($analysis->deviations()->snapshot->userId->value));
+    $this->getJson('/api/workout-sessions/51/analysis')->assertOk()
+        ->assertJsonPath('data.overall_status', 'completed')
+        ->assertJsonPath('data.recommendation_generation.items', [])
+        ->assertJsonPath('data.recommendation_generation.no_change_reason', 'Нет упражнений для сравнения в текущей тренировке');
+    Queue::assertNothingPushed();
+})->with([true, false]);

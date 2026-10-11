@@ -5,10 +5,14 @@ namespace App\WorkoutExecution\Infrastructure\Providers;
 use App\WorkoutExecution\Application\Gateways\TrainingProgramSnapshotProvider;
 use App\WorkoutExecution\Application\Gateways\WorkoutClock;
 use App\WorkoutExecution\Application\Gateways\WorkoutCompletionTransaction;
+use App\WorkoutExecution\Application\Gateways\WorkoutReplacementCatalog;
+use App\WorkoutExecution\Application\Gateways\WorkoutReplacementPlanGateway;
 use App\WorkoutExecution\Application\Gateways\WorkoutSessionHistoryProvider;
 use App\WorkoutExecution\Application\Gateways\WorkoutSessionMutationLock;
 use App\WorkoutExecution\Domain\Repositories\WorkoutSessionRepository;
 use App\WorkoutExecution\Infrastructure\Integrations\WorkoutPlanning\EloquentTrainingProgramSnapshotProvider;
+use App\WorkoutExecution\Infrastructure\Integrations\WorkoutPlanning\EloquentWorkoutReplacementCatalog;
+use App\WorkoutExecution\Infrastructure\Integrations\WorkoutPlanning\EloquentWorkoutReplacementPlanGateway;
 use App\WorkoutExecution\Infrastructure\Locks\DatabaseWorkoutSessionMutationLock;
 use App\WorkoutExecution\Infrastructure\Locks\RedisWorkoutSessionMutationLock;
 use App\WorkoutExecution\Infrastructure\Persistence\Eloquent\Gateways\EloquentWorkoutSessionHistoryProvider;
@@ -26,6 +30,8 @@ final class WorkoutExecutionServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->bind(WorkoutReplacementCatalog::class, EloquentWorkoutReplacementCatalog::class);
+        $this->app->bind(WorkoutReplacementPlanGateway::class, EloquentWorkoutReplacementPlanGateway::class);
         $this->app->bind(WorkoutCompletionTransaction::class, DatabaseWorkoutCompletionTransaction::class);
         $this->app->bind(
             WorkoutSessionRepository::class,
