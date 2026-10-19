@@ -7,7 +7,6 @@ use App\WorkoutPlanning\Application\Exceptions\TrainingProgramNotFound;
 use App\WorkoutPlanning\Application\Factories\PlannedExerciseCollectionFactory;
 use App\WorkoutPlanning\Application\Gateways\TrainingProgramMutationLock;
 use App\WorkoutPlanning\Domain\Enums\Weekday;
-use App\WorkoutPlanning\Domain\Exceptions\TrainingProgramAlreadyExists;
 use App\WorkoutPlanning\Domain\Repositories\TrainingProgramRepository;
 use App\WorkoutPlanning\Domain\ValueObjects\ProgramName;
 use App\WorkoutPlanning\Domain\ValueObjects\TrainingProgramId;
@@ -40,11 +39,6 @@ final readonly class UpdateTrainingProgram
                 $weekday = $input->weekday === null
                     ? $trainingProgram->weekday
                     : Weekday::fromValue($input->weekday);
-
-                if ($weekday !== $trainingProgram->weekday
-                    && $this->trainingPrograms->findForUserOnWeekday($userId, $weekday) !== null) {
-                    throw new TrainingProgramAlreadyExists($userId, $weekday);
-                }
 
                 $name = new ProgramName($input->name);
                 $exercises = $this->exerciseCollectionFactory->create($input->exercises);

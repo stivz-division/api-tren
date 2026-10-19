@@ -12,7 +12,6 @@ use App\WorkoutPlanning\Domain\Entities\PlannedExercise;
 use App\WorkoutPlanning\Domain\Entities\TrainingProgram;
 use App\WorkoutPlanning\Domain\Enums\Weekday;
 use App\WorkoutPlanning\Domain\Exceptions\InvalidWeekday;
-use App\WorkoutPlanning\Domain\Exceptions\TrainingProgramAlreadyExists;
 use App\WorkoutPlanning\Domain\ValueObjects\ExerciseId;
 use App\WorkoutPlanning\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutPlanning\Domain\ValueObjects\PlannedSet;
@@ -78,7 +77,7 @@ it('creates and saves a program with an auto-increment identity', function () us
     expect($lock->userIds)->toBe([7]);
 });
 
-it('rejects a second program for the same user and weekday', function () use ($input, $sets) {
+it('creates a second program for the same user and weekday', function () use ($input, $sets) {
     $existingProgram = TrainingProgram::restore(
         new TrainingProgramId(5),
         new UserId(7),
@@ -97,13 +96,15 @@ it('rejects a second program for the same user and weekday', function () use ($i
         new SynchronousTrainingProgramMutationLock,
     );
 
-    expect(fn () => $useCase->handle(new CreateTrainingProgramInput(
+    $result = $useCase->handle(new CreateTrainingProgramInput(
         userId: 7,
         weekday: 1,
         name: 'Грудь',
         exercises: [$input(10, 3, 6, 100_000)],
-    )))->toThrow(TrainingProgramAlreadyExists::class);
-    expect($repository->addCalls)->toBe(0);
+    ));
+    expect($result->id)->toBe(41);
+    expect($repository->find(new TrainingProgramId(5))?->name->value)->toBe('Тренировка');
+    expect($repository->addCalls)->toBe(1);
     expect($repository->saveCalls)->toBe(0);
 });
 

@@ -8,7 +8,6 @@ use App\WorkoutPlanning\Domain\Collections\PlannedSetCollection;
 use App\WorkoutPlanning\Domain\Entities\PlannedExercise;
 use App\WorkoutPlanning\Domain\Entities\TrainingProgram;
 use App\WorkoutPlanning\Domain\Enums\Weekday;
-use App\WorkoutPlanning\Domain\Exceptions\TrainingProgramAlreadyExists;
 use App\WorkoutPlanning\Domain\ValueObjects\ExerciseId;
 use App\WorkoutPlanning\Domain\ValueObjects\ExercisePosition;
 use App\WorkoutPlanning\Domain\ValueObjects\PlannedSet;
@@ -20,6 +19,7 @@ use App\WorkoutPlanning\Domain\ValueObjects\WorkingWeight;
 use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Mappers\TrainingProgramMapper;
 use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Repositories\EloquentTrainingProgramRepository;
 use Illuminate\Database\DatabaseManager;
+use Illuminate\Database\Migrations\Migration;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 
 uses(LazilyRefreshDatabase::class);
@@ -85,12 +85,15 @@ it('persists and rehydrates the complete aggregate', function () use ($repositor
         'working_weight_grams' => 100_000,
     ]);
 
-    $rehydratedProgram = $repository()->findForUserOnWeekday(
+    $rehydratedPrograms = $repository()->findAllForUserOnWeekday(
         new UserId($user->id),
         Weekday::Monday,
     );
 
-    expect($rehydratedProgram?->name->value)->toBe('Силовая тренировка');
+    expect($rehydratedPrograms)->toHaveCount(1);
+    $rehydratedProgram = $rehydratedPrograms[0];
+
+    expect($rehydratedProgram->name->value)->toBe('Силовая тренировка');
     expect(array_map(
         static fn (PlannedExercise $exercise): array => [
             $exercise->exerciseId->value,
@@ -101,7 +104,7 @@ it('persists and rehydrates the complete aggregate', function () use ($repositor
             ], $exercise->plannedSets()),
             $exercise->position->value,
         ],
-        $rehydratedProgram?->plannedExercises() ?? [],
+        $rehydratedProgram->plannedExercises(),
     ))->toBe([
         [$benchPress->id, [[1, 6, 100_000], [2, 6, 100_000], [3, 6, 100_000]], 1],
         [$squat->id, [[1, 8, 120_000], [2, 8, 120_000], [3, 8, 120_000], [4, 8, 120_000]], 2],
@@ -147,7 +150,7 @@ it('returns only owned aggregates in weekday order with nested relations loaded'
     ]);
 });
 
-it('rejects a second active program for the same user and weekday atomically', function () use ($repository, $plannedExercise): void {
+it('persists both programs for the same user and weekday', function () use ($repository, $plannedExercise): void {
     $user = User::factory()->create();
     $exercise = Exercise::factory()->create();
     $firstProgram = TrainingProgram::create(
@@ -163,13 +166,14 @@ it('rejects a second active program for the same user and weekday atomically', f
     $trainingPrograms = $repository();
     $trainingPrograms->add($firstProgram);
 
-    expect(fn () => $trainingPrograms->add($secondProgram))
-        ->toThrow(TrainingProgramAlreadyExists::class);
-    $this->assertDatabaseCount('training_programs', 1);
-    $this->assertDatabaseCount('planned_exercises', 1);
+    $trainingPrograms->add($secondProgram);
+
+    $this->assertDatabaseCount('training_programs', 2);
+    $this->assertDatabaseCount('planned_exercises', 2);
+    $this->assertDatabaseCount('planned_sets', 8);
 });
 
-it('translates a weekday conflict on save and rolls back all changes', function () use ($repository, $plannedExercise): void {
+it('saves a program on an occupied weekday with its updated contents', function () use ($repository, $plannedExercise): void {
     $user = User::factory()->create();
     $exercise = Exercise::factory()->create();
     $trainingPrograms = $repository();
@@ -187,13 +191,14 @@ it('translates a weekday conflict on save and rolls back all changes', function 
     $program->rename(new ProgramName('Изменённая программа'));
     $program->replaceExercises(new PlannedExerciseCollection($plannedExercise($exercise, 2, 10, 60_000, 1)));
 
-    expect(fn () => $trainingPrograms->save($program))->toThrow(TrainingProgramAlreadyExists::class);
+    $trainingPrograms->save($program);
 
     $this->assertDatabaseHas('training_programs', [
-        'user_id' => $user->id, 'weekday' => 1, 'name' => 'Тренировка',
+        'id' => $program->id?->value, 'user_id' => $user->id, 'weekday' => 2, 'name' => 'Изменённая программа',
     ]);
-    $this->assertDatabaseHas('planned_sets', ['repetitions' => 6, 'working_weight_grams' => 100_000]);
-    $this->assertDatabaseCount('planned_sets', 2);
+    $this->assertDatabaseHas('planned_sets', ['repetitions' => 10, 'working_weight_grams' => 60_000]);
+    $this->assertDatabaseHas('planned_sets', ['repetitions' => 8, 'working_weight_grams' => 50_000]);
+    $this->assertDatabaseCount('planned_sets', 3);
 });
 
 it('replaces the persisted exercise prescription in one save', function () use ($repository, $plannedExercise): void {
@@ -277,4 +282,40 @@ it('hard deletes the aggregate and all planned exercises', function () use ($rep
     $this->assertDatabaseMissing('training_programs', ['id' => $trainingProgramId->value]);
     $this->assertDatabaseMissing('planned_exercises', ['training_program_id' => $trainingProgramId->value]);
     $this->assertDatabaseCount('planned_sets', 0);
+});
+
+it('preserves existing programs and planned sets when upgrading the weekday index', function () use ($repository, $plannedExercise): void {
+    $user = User::factory()->create();
+    $exercise = Exercise::factory()->create();
+    $trainingPrograms = $repository();
+    $program = $trainingPrograms->add(TrainingProgram::create(
+        new UserId($user->id),
+        Weekday::Monday,
+        new PlannedExerciseCollection($plannedExercise($exercise, 2, 8, 50_000, 1)),
+        new ProgramName('Существующая программа'),
+    ));
+    $migration = require database_path('migrations/2026_10_19_011402_allow_multiple_training_programs_per_weekday.php');
+    if (! $migration instanceof Migration
+        || ! method_exists($migration, 'up')
+        || ! method_exists($migration, 'down')) {
+        throw new LogicException('Ожидалась миграция расписания.');
+    }
+    $migration->down();
+
+    $migration->up();
+
+    $this->assertDatabaseHas('training_programs', [
+        'id' => $program->id?->value,
+        'name' => 'Существующая программа',
+        'weekday' => 1,
+    ]);
+    $this->assertDatabaseCount('planned_exercises', 1);
+    $this->assertDatabaseCount('planned_sets', 2);
+    $this->assertDatabaseHas('planned_sets', ['repetitions' => 8, 'working_weight_grams' => 50_000]);
+    $trainingPrograms->add(TrainingProgram::create(
+        new UserId($user->id),
+        Weekday::Monday,
+        new PlannedExerciseCollection($plannedExercise($exercise, 1, 10, 60_000, 1)),
+    ));
+    $this->assertDatabaseCount('training_programs', 2);
 });

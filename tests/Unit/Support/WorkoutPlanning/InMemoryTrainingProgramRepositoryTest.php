@@ -3,7 +3,6 @@
 use App\WorkoutPlanning\Domain\Collections\PlannedExerciseCollection;
 use App\WorkoutPlanning\Domain\Entities\TrainingProgram;
 use App\WorkoutPlanning\Domain\Enums\Weekday;
-use App\WorkoutPlanning\Domain\Exceptions\TrainingProgramAlreadyExists;
 use App\WorkoutPlanning\Domain\ValueObjects\ProgramName;
 use App\WorkoutPlanning\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutPlanning\Domain\ValueObjects\UserId;
@@ -68,15 +67,19 @@ it('rejects duplicate seeded identities', function () use ($persistedProgram): v
     );
 });
 
-it('rejects duplicate user and weekday among seeded programs', function () use ($persistedProgram): void {
-    $firstProgram = $persistedProgram(1, 7, Weekday::Monday);
-    $secondProgram = $persistedProgram(2, 7, Weekday::Monday);
-
-    expect(fn () => new InMemoryTrainingProgramRepository(
+it('returns seeded programs for the same weekday in id order', function () use ($persistedProgram): void {
+    $repository = new InMemoryTrainingProgramRepository(
         1,
-        $firstProgram,
-        $secondProgram,
-    ))->toThrow(TrainingProgramAlreadyExists::class);
+        $persistedProgram(2, 7, Weekday::Monday),
+        $persistedProgram(1, 7, Weekday::Monday),
+        $persistedProgram(3, 8, Weekday::Monday),
+        $persistedProgram(4, 7, Weekday::Tuesday),
+    );
+
+    expect(array_map(
+        static fn (TrainingProgram $program): ?int => $program->id?->value,
+        $repository->findAllForUserOnWeekday(new UserId(7), Weekday::Monday),
+    ))->toBe([1, 2]);
 });
 
 it('rejects a non-positive next identity', function (int $nextId): void {

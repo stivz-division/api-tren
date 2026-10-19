@@ -538,7 +538,7 @@ it('documents success resources and API error responses', function () use (
         'POST /training-programs' => ['201', '401', '409', '422'],
         'PUT /training-programs/{trainingProgramId}' => ['200', '401', '404', '409', '422'],
         'DELETE /training-programs/{trainingProgramId}' => ['204', '401', '404', '409'],
-        'GET /training-programs/weekdays/{weekday}' => ['200', '401', '404', '422'],
+        'GET /training-programs/weekdays/{weekday}' => ['200', '401', '422'],
         'GET /workout-sessions' => ['200', '401', '422'],
         'GET /workout-sessions/active' => ['200', '401'],
         'GET /workout-sessions/{workoutSessionId}/analysis' => ['200', '401', '404', '422'],
@@ -598,6 +598,15 @@ it('documents success resources and API error responses', function () use (
             $exerciseSchema,
             $resolveOpenApiReference($document, $openApiArrayAt($exerciseDetailSchema, ['properties', 'data'])),
         );
+
+        $weekdayOperation = $openApiOperation($document, 'GET', '/training-programs/weekdays/{weekday}');
+        $weekdaySchema = $openApiResponseSchema($document, $weekdayOperation, '200');
+        $this->assertSame('array', $openApiStringAt($weekdaySchema, ['properties', 'data', 'type']));
+        $this->assertSame(
+            '#/components/schemas/TrainingProgramResource',
+            $openApiStringAt($weekdaySchema, ['properties', 'data', 'items', '$ref']),
+        );
+        $this->assertArrayNotHasKey('404', $openApiArrayAt($weekdayOperation, ['responses']));
 
         $integerResourceProperties = [
             'WorkoutAnalysisResource' => ['id', 'workout_session_id'],

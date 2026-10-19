@@ -164,22 +164,35 @@ it('returns the same active session when start is retried for the same program',
     $this->assertDatabaseCount('workout_sessions', 1);
 });
 
-it('returns 409 when another program is started during an active session', function () use ($createProgram): void {
+it('starts the selected same-day program and prevents simultaneous sessions', function () use ($createProgram): void {
     $user = User::factory()->create();
-    [$firstProgram] = $createProgram($user, 1);
-    [$secondProgram] = $createProgram($user, 2, 'Спина');
+    [$firstProgram, $firstExercise] = $createProgram($user, 1, 'Утро');
+    [$secondProgram, $secondExercise] = $createProgram($user, 1, 'Вечер');
     Sanctum::actingAs($user);
-    $this->putJson('/api/workout-sessions/active', [
-        'training_program_id' => $firstProgram->id,
-    ])->assertOk();
+    $sessionId = expect($this->putJson('/api/workout-sessions/active', [
+        'training_program_id' => $secondProgram->id,
+    ])->assertOk()
+        ->assertJsonPath('data.training_program_id', $secondProgram->id)
+        ->assertJsonPath('data.program_name', 'Вечер')
+        ->assertJsonPath('data.exercises.0.exercise_id', $secondExercise->id)
+        ->json('data.id'))->toBeInt()->value;
 
     $this->putJson('/api/workout-sessions/active', [
-        'training_program_id' => $secondProgram->id,
+        'training_program_id' => $firstProgram->id,
     ])->assertConflict()->assertExactJson([
         'code' => 'active_workout_session_already_exists',
         'message' => 'Сначала завершите или отмените текущую тренировку.',
     ]);
     $this->assertDatabaseCount('workout_sessions', 1);
+
+    $this->postJson('/api/workout-sessions/'.$sessionId.'/cancel')->assertOk();
+    $this->putJson('/api/workout-sessions/active', [
+        'training_program_id' => $firstProgram->id,
+    ])->assertOk()
+        ->assertJsonPath('data.training_program_id', $firstProgram->id)
+        ->assertJsonPath('data.program_name', 'Утро')
+        ->assertJsonPath('data.exercises.0.exercise_id', $firstExercise->id);
+    $this->assertDatabaseCount('workout_sessions', 2);
 });
 
 it('fully replaces and clears an exercise draft using array order as set positions', function () use ($createProgram): void {

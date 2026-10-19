@@ -1,6 +1,5 @@
 <?php
 
-use App\WorkoutPlanning\Application\Exceptions\TrainingProgramNotFound;
 use App\WorkoutPlanning\Application\UseCases\GetTrainingProgramForWeekday\GetTrainingProgramForWeekday;
 use App\WorkoutPlanning\Application\UseCases\GetTrainingProgramForWeekday\GetTrainingProgramForWeekdayInput;
 use App\WorkoutPlanning\Domain\Collections\PlannedExerciseCollection;
@@ -21,7 +20,7 @@ $mondayProgram = static fn (): TrainingProgram => TrainingProgram::restore(
     ProgramName::default(),
 );
 
-it('returns an owned program for an explicit weekday', function () use ($mondayProgram) {
+it('returns owned programs for an explicit weekday', function () use ($mondayProgram) {
     $tuesdayProgram = TrainingProgram::restore(
         new TrainingProgramId(6),
         new UserId(7),
@@ -34,12 +33,13 @@ it('returns an owned program for an explicit weekday', function () use ($mondayP
 
     $result = $useCase->handle(new GetTrainingProgramForWeekdayInput(userId: 7, weekday: 2));
 
+    expect($result)->toHaveCount(1);
     expect([
-        $result->id,
-        $result->userId,
-        $result->weekday,
-        $result->name,
-        $result->exercises[0]->exerciseId,
+        $result[0]->id,
+        $result[0]->userId,
+        $result[0]->weekday,
+        $result[0]->name,
+        $result[0]->exercises[0]->exerciseId,
     ])->toBe([6, 7, 2, 'Тренировка', 20]);
 });
 
@@ -47,10 +47,10 @@ it('does not return another users program', function () use ($mondayProgram) {
     $repository = new InMemoryTrainingProgramRepository(6, $mondayProgram());
     $useCase = new GetTrainingProgramForWeekday($repository);
 
-    expect(fn () => $useCase->handle(new GetTrainingProgramForWeekdayInput(
+    expect($useCase->handle(new GetTrainingProgramForWeekdayInput(
         userId: 8,
         weekday: 1,
-    )))->toThrow(TrainingProgramNotFound::class);
+    )))->toBe([]);
 });
 
 it('rejects an unsupported weekday with a Russian domain error', function () {

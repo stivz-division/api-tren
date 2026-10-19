@@ -7,7 +7,6 @@ use App\WorkoutAnalysis\Infrastructure\Integrations\WorkoutPlanning\Recommendati
 use App\WorkoutPlanning\Domain\Entities\PlannedExercise;
 use App\WorkoutPlanning\Domain\Entities\TrainingProgram;
 use App\WorkoutPlanning\Domain\Enums\Weekday;
-use App\WorkoutPlanning\Domain\Exceptions\TrainingProgramAlreadyExists;
 use App\WorkoutPlanning\Domain\Repositories\TrainingProgramRepository;
 use App\WorkoutPlanning\Domain\ValueObjects\PlannedSet;
 use App\WorkoutPlanning\Domain\ValueObjects\TrainingProgramId;
@@ -16,7 +15,6 @@ use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Mappers\TrainingProg
 use App\WorkoutPlanning\Infrastructure\Persistence\Eloquent\Models\TrainingProgramModel;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\QueryException;
 use LogicException;
 
 final readonly class EloquentTrainingProgramRepository implements TrainingProgramRepository
@@ -48,14 +46,15 @@ final readonly class EloquentTrainingProgramRepository implements TrainingProgra
         return $model === null ? null : $this->mapper->toDomain($model);
     }
 
-    public function findForUserOnWeekday(UserId $userId, Weekday $weekday): ?TrainingProgram
+    public function findAllForUserOnWeekday(UserId $userId, Weekday $weekday): array
     {
-        $model = $this->queryWithExercises()
+        return array_values($this->queryWithExercises()
             ->where('user_id', $userId->value)
             ->where('weekday', $weekday->value)
-            ->first();
-
-        return $model === null ? null : $this->mapper->toDomain($model);
+            ->orderBy('id')
+            ->get()
+            ->map(fn (TrainingProgramModel $model): TrainingProgram => $this->mapper->toDomain($model))
+            ->all());
     }
 
     public function add(TrainingProgram $trainingProgram): TrainingProgram
@@ -64,29 +63,18 @@ final readonly class EloquentTrainingProgramRepository implements TrainingProgra
             throw new LogicException('Нельзя добавить уже сохранённую программу тренировок.');
         }
 
-        try {
-            $model = $this->database->transaction(function () use ($trainingProgram): TrainingProgramModel {
-                User::query()->whereKey($trainingProgram->userId->value)->lockForUpdate()->firstOrFail();
-                $model = TrainingProgramModel::query()->create([
-                    'user_id' => $trainingProgram->userId->value,
-                    'weekday' => $trainingProgram->weekday->value,
-                    'name' => $trainingProgram->name->value,
-                ]);
+        $model = $this->database->transaction(function () use ($trainingProgram): TrainingProgramModel {
+            User::query()->whereKey($trainingProgram->userId->value)->lockForUpdate()->firstOrFail();
+            $model = TrainingProgramModel::query()->create([
+                'user_id' => $trainingProgram->userId->value,
+                'weekday' => $trainingProgram->weekday->value,
+                'name' => $trainingProgram->name->value,
+            ]);
 
-                $this->persistPlannedExercises($model, $trainingProgram);
+            $this->persistPlannedExercises($model, $trainingProgram);
 
-                return $model->load('plannedExercises.plannedSets');
-            });
-        } catch (QueryException $exception) {
-            if (! $this->isProgramSlotConflict($exception)) {
-                throw $exception;
-            }
-
-            throw new TrainingProgramAlreadyExists(
-                $trainingProgram->userId,
-                $trainingProgram->weekday,
-            );
-        }
+            return $model->load('plannedExercises.plannedSets');
+        });
 
         return $this->mapper->toDomain($model);
     }
@@ -95,50 +83,39 @@ final readonly class EloquentTrainingProgramRepository implements TrainingProgra
     {
         $id = $this->identityOf($trainingProgram);
 
-        try {
-            $this->database->transaction(function () use ($id, $trainingProgram): void {
-                User::query()->whereKey($trainingProgram->userId->value)->lockForUpdate()->firstOrFail();
-                $model = TrainingProgramModel::query()
-                    ->whereKey($id->value)
-                    ->where('user_id', $trainingProgram->userId->value)
-                    ->lockForUpdate()
-                    ->first();
+        $this->database->transaction(function () use ($id, $trainingProgram): void {
+            User::query()->whereKey($trainingProgram->userId->value)->lockForUpdate()->firstOrFail();
+            $model = TrainingProgramModel::query()
+                ->whereKey($id->value)
+                ->where('user_id', $trainingProgram->userId->value)
+                ->lockForUpdate()
+                ->first();
 
-                if ($model === null) {
-                    throw new LogicException('Нельзя сохранить несуществующую программу тренировок.');
-                }
-
-                $model->load('plannedExercises.plannedSets');
-                $newSets = [];
-                foreach ($trainingProgram->plannedExercises() as $exercise) {
-                    $newSets[$exercise->exerciseId->value] = $this->plannedSetAttributes($exercise);
-                }
-                foreach ($model->plannedExercises as $exercise) {
-                    $oldSets = $exercise->plannedSets->map(static fn ($set): array => [
-                        'position' => $set->position, 'repetitions' => $set->repetitions, 'working_weight_grams' => $set->working_weight_grams,
-                    ])->all();
-                    if (($newSets[$exercise->exercise_id] ?? null) !== $oldSets) {
-                        $this->invalidator->changed($trainingProgram->userId->value, $id->value, $exercise->exercise_id, now()->toDateTimeImmutable());
-                    }
-                }
-
-                $model->update([
-                    'weekday' => $trainingProgram->weekday->value,
-                    'name' => $trainingProgram->name->value,
-                ]);
-                $model->plannedExercises()->delete();
-                $this->persistPlannedExercises($model, $trainingProgram);
-            });
-        } catch (QueryException $exception) {
-            if (! $this->isProgramSlotConflict($exception)) {
-                throw $exception;
+            if ($model === null) {
+                throw new LogicException('Нельзя сохранить несуществующую программу тренировок.');
             }
 
-            throw new TrainingProgramAlreadyExists(
-                $trainingProgram->userId,
-                $trainingProgram->weekday,
-            );
-        }
+            $model->load('plannedExercises.plannedSets');
+            $newSets = [];
+            foreach ($trainingProgram->plannedExercises() as $exercise) {
+                $newSets[$exercise->exerciseId->value] = $this->plannedSetAttributes($exercise);
+            }
+            foreach ($model->plannedExercises as $exercise) {
+                $oldSets = $exercise->plannedSets->map(static fn ($set): array => [
+                    'position' => $set->position, 'repetitions' => $set->repetitions, 'working_weight_grams' => $set->working_weight_grams,
+                ])->all();
+                if (($newSets[$exercise->exercise_id] ?? null) !== $oldSets) {
+                    $this->invalidator->changed($trainingProgram->userId->value, $id->value, $exercise->exercise_id, now()->toDateTimeImmutable());
+                }
+            }
+
+            $model->update([
+                'weekday' => $trainingProgram->weekday->value,
+                'name' => $trainingProgram->name->value,
+            ]);
+            $model->plannedExercises()->delete();
+            $this->persistPlannedExercises($model, $trainingProgram);
+        });
     }
 
     public function delete(TrainingProgram $trainingProgram): void
@@ -208,13 +185,5 @@ final readonly class EloquentTrainingProgramRepository implements TrainingProgra
     {
         return $trainingProgram->id
             ?? throw new LogicException('У сохранённой программы тренировок должен быть идентификатор.');
-    }
-
-    private function isProgramSlotConflict(QueryException $exception): bool
-    {
-        $message = $exception->getMessage();
-
-        return str_contains($message, 'training_programs_user_weekday_unique')
-            || str_contains($message, 'training_programs.user_id, training_programs.weekday');
     }
 }

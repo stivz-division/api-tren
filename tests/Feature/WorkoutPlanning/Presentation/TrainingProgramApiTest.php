@@ -244,58 +244,63 @@ it('validates an ordered non-empty bounded list of complete planned sets', funct
     ],
 ]);
 
-it('returns 409 with a stable code when the weekday is already occupied', function () use ($sets): void {
-    $user = User::factory()->create();
-    $exercise = Exercise::factory()->create();
-    Sanctum::actingAs($user);
-    $payload = [
-        'weekday' => 1,
-        'exercises' => [[
-            'exercise_id' => $exercise->id,
-            'sets' => $sets(3, 6, 100),
-        ]],
-    ];
-    $this->postJson('/api/training-programs', $payload)->assertCreated();
-
-    $response = $this->postJson('/api/training-programs', $payload);
-
-    $response
-        ->assertConflict()
-        ->assertExactJson([
-            'code' => 'training_program_already_exists',
-            'message' => 'На этот день уже создана программа тренировок.',
-        ]);
-    $this->assertDatabaseCount('training_programs', 1);
-});
-
-it('returns the authenticated user program for a weekday', function () use ($sets): void {
+it('creates independent programs on the same weekday and returns them in id order', function () use ($sets): void {
     $owner = User::factory()->create();
-    $otherUser = User::factory()->create();
     $exercise = Exercise::factory()->create();
     Sanctum::actingAs($owner);
-    $programId = expect($this->postJson('/api/training-programs', [
+    $payload = [
         'weekday' => 3,
-        'name' => 'Грудь и спина',
-        'exercises' => [[
-            'exercise_id' => $exercise->id,
-            'sets' => $sets(4, 8, 2.5),
-        ]],
-    ])->assertCreated()->json('data.id'))->toBeInt()->value;
+        'exercises' => [['exercise_id' => $exercise->id, 'sets' => $sets(1, 8, 2.5)]],
+    ];
+    $firstId = expect($this->postJson('/api/training-programs', ['name' => 'Утро'] + $payload)
+        ->assertCreated()->json('data.id'))->toBeInt()->value;
+    $secondId = $this->postJson('/api/training-programs', ['name' => 'Вечер'] + $payload)
+        ->assertCreated()->json('data.id');
+    $this->postJson('/api/training-programs', ['weekday' => 4] + $payload)->assertCreated();
+    Sanctum::actingAs(User::factory()->create());
+    $this->postJson('/api/training-programs', $payload)->assertCreated();
+    Sanctum::actingAs($owner);
 
-    $ownerResponse = $this->getJson('/api/training-programs/weekdays/3');
-    Sanctum::actingAs($otherUser);
-    $otherUserResponse = $this->getJson('/api/training-programs/weekdays/3');
+    $this->getJson('/api/training-programs/weekdays/3')->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('data.*.id', [$firstId, $secondId])
+        ->assertJsonPath('data.*.name', ['Утро', 'Вечер'])
+        ->assertJsonPath('data.0.exercises.0.sets.0.working_weight_kg', 2.5)
+        ->assertJsonPath('data.1.exercises.0.sets.0.repetitions', 8);
+    $this->getJson('/api/training-programs')->assertOk()
+        ->assertJsonCount(3, 'data')
+        ->assertJsonPath('data.0.id', $firstId)
+        ->assertJsonPath('data.1.id', $secondId);
 
-    $ownerResponse
-        ->assertOk()
-        ->assertJsonPath('data.id', $programId)
-        ->assertJsonPath('data.exercises.0.sets.0.working_weight_kg', 2.5);
-    $otherUserResponse
-        ->assertNotFound()
-        ->assertExactJson([
-            'code' => 'training_program_not_found',
-            'message' => 'Программа тренировок не найдена.',
-        ]);
+    $this->putJson('/api/training-programs/'.$firstId, [
+        'name' => 'Обновлённое утро',
+        'exercises' => [['exercise_id' => $exercise->id, 'sets' => $sets(2, 10, 5)]],
+    ])->assertOk();
+    $this->getJson('/api/training-programs/weekdays/3')->assertOk()
+        ->assertJsonPath('data.0.name', 'Обновлённое утро')
+        ->assertJsonCount(2, 'data.0.exercises.0.sets')
+        ->assertJsonPath('data.1.name', 'Вечер')
+        ->assertJsonCount(1, 'data.1.exercises.0.sets')
+        ->assertJsonPath('data.1.exercises.0.sets.0.working_weight_kg', 2.5);
+
+    $this->deleteJson('/api/training-programs/'.$firstId)->assertNoContent();
+    $this->getJson('/api/training-programs/weekdays/3')->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $secondId)
+        ->assertJsonPath('data.0.exercises.0.sets.0.repetitions', 8);
+});
+
+it('returns an empty weekday list without exposing another users program', function () use ($sets): void {
+    Sanctum::actingAs(User::factory()->create());
+    $exercise = Exercise::factory()->create();
+    $this->postJson('/api/training-programs', [
+        'weekday' => 3,
+        'exercises' => [['exercise_id' => $exercise->id, 'sets' => $sets(1, 8, 2.5)]],
+    ])->assertCreated();
+    $this->getJson('/api/training-programs/weekdays/4')->assertOk()->assertExactJson(['data' => []]);
+    Sanctum::actingAs(User::factory()->create());
+
+    $this->getJson('/api/training-programs/weekdays/3')->assertOk()->assertExactJson(['data' => []]);
 });
 
 it('fully replaces the name, exercises, and individual sets without changing the weekday', function () use ($sets): void {
@@ -424,13 +429,13 @@ it('updates a program weekday while retaining its identity', function (int $week
         'weekday' => $weekday,
     ]);
     $this->getJson('/api/training-programs/weekdays/'.$weekday)
-        ->assertOk()->assertJsonPath('data.id', $programId);
+        ->assertOk()->assertJsonPath('data.0.id', $programId);
     if ($weekday !== 1) {
-        $this->getJson('/api/training-programs/weekdays/1')->assertNotFound();
+        $this->getJson('/api/training-programs/weekdays/1')->assertOk()->assertExactJson(['data' => []]);
     }
 })->with([1, 2, 7]);
 
-it('rejects moving a program to an occupied weekday without changing its contents', function () use ($sets): void {
+it('moves a program to an occupied weekday without changing the other program', function () use ($sets): void {
     Sanctum::actingAs(User::factory()->create());
     $exercise = Exercise::factory()->create();
     $payload = [
@@ -439,20 +444,23 @@ it('rejects moving a program to an occupied weekday without changing its content
     ];
     $programId = expect($this->postJson('/api/training-programs', ['weekday' => 1] + $payload)
         ->assertCreated()->json('data.id'))->toBeInt()->value;
-    $this->postJson('/api/training-programs', ['weekday' => 2] + $payload)->assertCreated();
+    $otherId = $this->postJson('/api/training-programs', ['weekday' => 2] + $payload)->assertCreated()->json('data.id');
 
     $this->putJson('/api/training-programs/'.$programId, [
         'weekday' => 2,
         'name' => 'Изменённая программа',
         'exercises' => [['exercise_id' => $exercise->id, 'sets' => $sets(1, 10, 50)]],
-    ])->assertConflict()->assertJsonPath('code', 'training_program_already_exists');
+    ])->assertOk()->assertJsonPath('data.id', $programId);
 
     $this->assertDatabaseHas('training_programs', [
-        'id' => $programId, 'weekday' => 1, 'name' => 'Исходная программа',
+        'id' => $programId, 'weekday' => 2, 'name' => 'Изменённая программа',
     ]);
-    $this->getJson('/api/training-programs/weekdays/1')->assertOk()
-        ->assertJsonPath('data.exercises.0.sets.0.repetitions', 6)
-        ->assertJsonPath('data.exercises.0.sets.0.working_weight_kg', 100);
+    $this->getJson('/api/training-programs/weekdays/1')->assertOk()->assertExactJson(['data' => []]);
+    $this->getJson('/api/training-programs/weekdays/2')->assertOk()
+        ->assertJsonPath('data.*.id', [$programId, $otherId])
+        ->assertJsonPath('data.0.exercises.0.sets.0.repetitions', 10)
+        ->assertJsonPath('data.1.exercises.0.sets.0.repetitions', 6)
+        ->assertJsonPath('data.1.exercises.0.sets.0.working_weight_kg', 100);
 });
 
 it('rejects an invalid weekday when updating a program', function (mixed $weekday) use ($sets): void {

@@ -640,7 +640,7 @@
                         }
                     },
                     "409": {
-                        "description": "A program already exists for the weekday or schedule mutation is in progress.",
+                        "description": "Schedule mutation is in progress.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -980,14 +980,17 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "`TrainingProgramResource`",
+                        "description": "Array of `TrainingProgramResource`",
                         "content": {
                             "application/json": {
                                 "schema": {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/components/schemas/TrainingProgramResource"
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/TrainingProgramResource"
+                                            }
                                         }
                                     },
                                     "required": [
@@ -1005,28 +1008,6 @@
                     },
                     "403": {
                         "$ref": "#/components/responses/AuthorizationException"
-                    },
-                    "404": {
-                        "description": "No training program exists for the requested weekday.",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "code": {
-                                            "type": "string"
-                                        },
-                                        "message": {
-                                            "type": "string"
-                                        }
-                                    },
-                                    "required": [
-                                        "code",
-                                        "message"
-                                    ]
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -1114,7 +1095,7 @@
                         "$ref": "#/components/responses/AuthorizationException"
                     },
                     "409": {
-                        "description": "A program already exists for the weekday or schedule mutation is in progress.",
+                        "description": "Schedule mutation is in progress.",
                         "content": {
                             "application/json": {
                                 "schema": {

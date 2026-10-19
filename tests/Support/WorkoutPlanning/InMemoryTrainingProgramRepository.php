@@ -5,7 +5,6 @@ namespace Tests\Support\WorkoutPlanning;
 use App\WorkoutPlanning\Domain\Collections\PlannedExerciseCollection;
 use App\WorkoutPlanning\Domain\Entities\TrainingProgram;
 use App\WorkoutPlanning\Domain\Enums\Weekday;
-use App\WorkoutPlanning\Domain\Exceptions\TrainingProgramAlreadyExists;
 use App\WorkoutPlanning\Domain\Repositories\TrainingProgramRepository;
 use App\WorkoutPlanning\Domain\ValueObjects\TrainingProgramId;
 use App\WorkoutPlanning\Domain\ValueObjects\UserId;
@@ -42,13 +41,6 @@ final class InMemoryTrainingProgramRepository implements TrainingProgramReposito
                 );
             }
 
-            if ($this->existsForUserOnWeekday($trainingProgram->userId, $trainingProgram->weekday)) {
-                throw new TrainingProgramAlreadyExists(
-                    $trainingProgram->userId,
-                    $trainingProgram->weekday,
-                );
-            }
-
             $this->trainingPrograms[$id->value] = $this->copy($trainingProgram);
             $this->nextId = max($this->nextId, $id->value + 1);
         }
@@ -70,7 +62,7 @@ final class InMemoryTrainingProgramRepository implements TrainingProgramReposito
 
         usort(
             $trainingPrograms,
-            static fn (TrainingProgram $left, TrainingProgram $right): int => $left->weekday->value <=> $right->weekday->value,
+            static fn (TrainingProgram $left, TrainingProgram $right): int => [$left->weekday->value, $left->id?->value] <=> [$right->weekday->value, $right->id?->value],
         );
 
         return array_map(
@@ -90,20 +82,12 @@ final class InMemoryTrainingProgramRepository implements TrainingProgramReposito
         return $trainingProgram;
     }
 
-    public function findForUserOnWeekday(UserId $userId, Weekday $weekday): ?TrainingProgram
+    public function findAllForUserOnWeekday(UserId $userId, Weekday $weekday): array
     {
-        foreach ($this->trainingPrograms as $trainingProgram) {
-            if ($trainingProgram->userId->equals($userId) && $trainingProgram->weekday === $weekday) {
-                return $this->copy($trainingProgram);
-            }
-        }
-
-        return null;
-    }
-
-    public function existsForUserOnWeekday(UserId $userId, Weekday $weekday): bool
-    {
-        return $this->findForUserOnWeekday($userId, $weekday) !== null;
+        return array_values(array_filter(
+            $this->findAllForUser($userId),
+            static fn (TrainingProgram $trainingProgram): bool => $trainingProgram->weekday === $weekday,
+        ));
     }
 
     public function save(TrainingProgram $trainingProgram): void
@@ -117,13 +101,6 @@ final class InMemoryTrainingProgramRepository implements TrainingProgramReposito
     {
         if ($trainingProgram->id !== null) {
             throw new LogicException('Нельзя добавить уже сохранённую программу тренировок.');
-        }
-
-        if ($this->existsForUserOnWeekday($trainingProgram->userId, $trainingProgram->weekday)) {
-            throw new TrainingProgramAlreadyExists(
-                $trainingProgram->userId,
-                $trainingProgram->weekday,
-            );
         }
 
         $persistedTrainingProgram = $this->restoreWithIdentity(

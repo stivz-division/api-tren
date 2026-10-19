@@ -23,7 +23,6 @@ use App\WorkoutPlanning\Application\Exceptions\TrainingProgramMutationInProgress
 use App\WorkoutPlanning\Application\Exceptions\TrainingProgramNotFound;
 use App\WorkoutPlanning\Domain\Exceptions\ExerciseAlreadyPlanned;
 use App\WorkoutPlanning\Domain\Exceptions\InvalidWeekday;
-use App\WorkoutPlanning\Domain\Exceptions\TrainingProgramAlreadyExists;
 use App\WorkoutPlanning\Domain\Exceptions\TrainingProgramMustContainExercise;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -76,12 +75,6 @@ return Application::configure(basePath: dirname(__DIR__))
                 'code' => 'training_program_not_found',
                 'message' => 'Программа тренировок не найдена.',
             ], Response::HTTP_NOT_FOUND),
-        );
-        $exceptions->render(
-            fn (TrainingProgramAlreadyExists $exception): JsonResponse => response()->json([
-                'code' => 'training_program_already_exists',
-                'message' => 'На этот день уже создана программа тренировок.',
-            ], Response::HTTP_CONFLICT),
         );
         $exceptions->render(
             fn (TrainingProgramMutationInProgress $exception): JsonResponse => response()->json([

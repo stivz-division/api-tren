@@ -7,21 +7,16 @@ use App\WorkoutPlanning\Application\UseCases\GetTrainingProgramForWeekday\GetTra
 use App\WorkoutPlanning\Presentation\Http\Requests\GetTrainingProgramForWeekdayRequest;
 use App\WorkoutPlanning\Presentation\Http\Resources\TrainingProgramResource;
 use Dedoc\Scramble\Attributes\PathParameter;
-use Dedoc\Scramble\Attributes\Response as OpenApiResponse;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 final class GetTrainingProgramForWeekdayController extends Controller
 {
     #[PathParameter('weekday', type: 'int<1, 7>')]
-    #[OpenApiResponse(
-        status: 404,
-        description: 'No training program exists for the requested weekday.',
-        type: 'array{code: string, message: string}',
-    )]
     public function __invoke(
         GetTrainingProgramForWeekdayRequest $request,
         GetTrainingProgramForWeekday $getTrainingProgramForWeekday,
-    ): TrainingProgramResource {
-        return new TrainingProgramResource(
+    ): AnonymousResourceCollection {
+        return TrainingProgramResource::collection(
             $getTrainingProgramForWeekday->handle($request->toInput()),
         );
     }

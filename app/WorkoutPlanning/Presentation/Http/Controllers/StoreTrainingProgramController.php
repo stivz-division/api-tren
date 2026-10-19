@@ -14,7 +14,7 @@ final class StoreTrainingProgramController extends Controller
 {
     #[OpenApiResponse(
         status: 409,
-        description: 'A program already exists for the weekday or schedule mutation is in progress.',
+        description: 'Schedule mutation is in progress.',
         type: 'array{code: string, message: string}',
     )]
     public function __invoke(
